@@ -9,3 +9,9 @@ lint: venv
 
 build: venv
 	uv build
+
+docs:
+	uv run zensical serve
+
+docs-build:
+	uv run zensical build --clean --strict
