@@ -1,10 +1,8 @@
 # Ingest a merged contribution
 
-In the pull request pattern, the decision is a merge. After the merge,
-the submission is a folder `submissions/<id>/` on the base branch. Your
-project must then fold the submission into its dataset with a program,
-and push the result. The `ingest` action does the git steps. Your
-project gives only the command that folds the data.
+After a curator merges a contribution, the submission is a folder
+`submissions/<id>/` on the base branch. The `ingest` action runs your
+command to fold it into your dataset, then does the git steps.
 
 ## What the action does
 
@@ -24,9 +22,8 @@ request from a `contrib/<id>` branch.
 5. If you set `deploy-workflow`, it starts that workflow on the base
    branch.
 
-A push with the `GITHUB_TOKEN` starts no workflow. A `workflow_dispatch`
-event can start a workflow. Thus the action starts your deploy workflow
-itself.
+A push with the `GITHUB_TOKEN` starts no workflow. Thus the action
+starts your deploy workflow itself.
 
 ```mermaid
 sequenceDiagram
@@ -84,7 +81,7 @@ jobs:
           deploy-workflow: deploy.yml
 ```
 
-The `concurrency` group runs one ingest at a time for each base branch.
+The `concurrency` group runs one ingest at a time for each branch.
 The other inputs have these default values:
 
 | Input            | Default                                                 |
@@ -110,8 +107,59 @@ The action runs the command once for each submission. The command must:
 - Fail with a clear message and a non-zero exit code if the data is
   not correct. Do not skip a bad file.
 
-The action adds all the changes in the working tree to the commit.
-Thus the command must not leave temporary files in the repository.
+The action commits all the changes in the working tree. Do not leave
+temporary files.
+
+## Write the command with the helpers
+
+The module `enacit4r_contrib.ingest` does the file operations. Your
+command keeps only the rules of your data.
+
+- A `Plan` checks all the changes before the first write. If one
+  change cannot be done, it writes nothing and raises `IngestError`.
+- `Plan.append` does not change the old bytes of a CSV.
+- `run` prints the errors of an `IngestError` and returns exit code 1.
+
+This example adds the rows of `table.csv` to `data/table.csv`, which
+has the columns `id` and `name`. It copies each curve
+`curves/<name>.csv` to `data/curves/<id>.csv`.
+
+```python
+import csv
+import io
+import sys
+from pathlib import Path
+
+from enacit4r_contrib.ingest import IngestError, Plan, next_number, read_folder, run
+
+DATA = Path("data")
+
+
+def ingest(submission: Path) -> list[str]:
+    files = read_folder(submission)
+    table = DATA / "table.csv"
+    with table.open(encoding="utf-8-sig", newline="") as f:
+        n = next_number(row["id"] for row in csv.DictReader(f))
+    text = files["table.csv"].decode("utf-8-sig")
+    plan, rows, done = Plan(), [], []
+    for row in csv.DictReader(io.StringIO(text, newline="")):
+        name = row["name"]
+        curve = files.get(f"curves/{name}.csv")
+        if curve is None:
+            raise IngestError(f"{name}: the file curves/{name}.csv is missing")
+        rows.append([str(n), name])
+        plan.create(DATA / "curves" / f"{n}.csv", curve)
+        done.append(f"ingested {name} as id {n}")
+        n += 1
+    plan.append(table, rows)
+    plan.remove(submission)
+    plan.apply()
+    return done
+
+
+if __name__ == "__main__":
+    sys.exit(run(ingest))
+```
 
 ## When the command fails
 
@@ -123,9 +171,8 @@ and this line:
 The ingest command failed for submissions/<id>. Nothing was pushed.
 ```
 
-The submission stays on the base branch. To correct it, push a fix to
-the data or to the command. Then run the failed job again in the
-Actions tab.
+The submission stays on the base branch. Push a fix, then run the
+failed job again in the Actions tab.
 
 ## Next step
 
