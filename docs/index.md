@@ -28,9 +28,10 @@ flowchart LR
    function that returns a list of problems. The library calls each
    problem an `Issue`.
 3. Sink: a sink stores a valid contribution for review. The library
-   gives `GitHubPRSink`, which opens a GitHub pull request.
+   gives `GitHubPRSink`, which opens a GitHub pull request, and
+   `DraftSink`, which saves a draft in storage.
 4. Decision: a person reviews the contribution and accepts or refuses
-   it. This step stays in your project.
+   it. For drafts, `Review` and `review_router` record the decision.
 
 ## The two patterns
 
@@ -40,10 +41,10 @@ The difference is only the sink.
 | Pattern            | Sink                                  | Decision                    |
 | ------------------ | ------------------------------------- | --------------------------- |
 | Pull request       | `GitHubPRSink`: a branch and a PR     | A GitHub review and a merge |
-| Draft in storage   | Your own sink: S3, a database, folder | An admin action in your app |
+| Draft in storage   | `DraftSink`: a folder, S3, a database | An admin action: `Review`   |
 
-The pull request pattern is ready to use. For the draft pattern, you
-write a small sink class. The [Sinks](sinks.md) page tells you how.
+The two patterns are ready to use. [Drafts in storage](drafts.md)
+tells you how to wire the draft pattern.
 
 ## The pages of this site
 
@@ -56,6 +57,7 @@ write a small sink class. The [Sinks](sinks.md) page tells you how.
   requests.
 - [Sinks](sinks.md): what `GitHubPRSink` writes, and how to write a
   different sink.
+- [Drafts in storage](drafts.md): drafts, an admin review, and publication.
 - [Ingest](ingest.md): fold a merged contribution into your data.
 - [Testing](testing.md): test your integration without GitHub.
 - [Contribution pipelines in five projects](research/contribution-pipelines.md):

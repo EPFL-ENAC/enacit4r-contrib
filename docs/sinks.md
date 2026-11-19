@@ -1,9 +1,9 @@
 # Sinks
 
 A sink stores a valid contribution so that a person can review it. The
-library gives one sink, `GitHubPRSink`, for the pull request pattern.
-This page tells you what that sink writes, and how to write a sink for
-the draft-in-storage pattern.
+library gives two sinks. `GitHubPRSink` opens a pull request.
+`DraftSink` saves a draft in storage. This page tells you what
+`GitHubPRSink` writes.
 
 ## What GitHubPRSink writes
 
@@ -64,46 +64,9 @@ inherit from a base class.
 - `open_count()` returns the number of contributions that wait for a
   review.
 
-This example writes each contribution to a folder on the server:
-
-```python
-import json
-import secrets
-from pathlib import Path
-
-from enacit4r_contrib import Bundle, Contributor, Receipt, Report
-
-
-class FolderSink:
-    def __init__(self, root: Path):
-        self.root = root
-
-    async def submit(
-        self, bundle: Bundle, contributor: Contributor, report: Report
-    ) -> Receipt:
-        id_ = secrets.token_hex(8)
-        folder = self.root / "pending" / id_
-        for path, data in bundle.items():
-            (folder / path).parent.mkdir(parents=True, exist_ok=True)
-            (folder / path).write_bytes(data)
-        info = {"contributor": contributor.model_dump(), "report": report.to_dict()}
-        (folder / "info.json").write_text(json.dumps(info))
-        return Receipt(id_, f"/admin/contributions/{id_}")
-
-    async def open_count(self) -> int:
-        pending = self.root / "pending"
-        return sum(1 for p in pending.iterdir()) if pending.exists() else 0
-```
-
-The same structure works for other storage:
-
-- An S3 draft: write the files under `draft/<id>/` with
-  `enacit4r_files`. Count the drafts in `open_count`.
-- A database row: insert one row with the state `in-review`. Count the
-  rows in that state.
-
-The review states and the publication stay in your project. Your admin
-action moves the draft out of `pending`, so that `open_count` goes down.
+For the draft-in-storage pattern, use `DraftSink`. It saves each
+contribution as a draft in a folder, in S3, or in a database. Read
+[Drafts in storage](drafts.md).
 
 ## Next step
 

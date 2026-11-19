@@ -47,6 +47,8 @@ endpoints from the browser, and test your integration.
 
 After a merge, the `ingest` GitHub action folds the submission into your data. See [Ingest](https://epfl-enac.github.io/enacit4r-contrib/ingest/).
 
+To keep contributions as drafts for an admin page instead of pull requests, see [Drafts in storage](https://epfl-enac.github.io/enacit4r-contrib/drafts/).
+
 ## Develop
 
 ```bash

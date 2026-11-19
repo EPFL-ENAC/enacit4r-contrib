@@ -15,6 +15,7 @@ nav = [
     { "HTTP API" = "http-api.md" },
     { "GitHub App" = "github-app.md" },
     { "Sinks" = "sinks.md" },
+    { "Drafts in storage" = "drafts.md" },
     { "Ingest" = "ingest.md" },
     { "Testing" = "testing.md" },
   ] },
