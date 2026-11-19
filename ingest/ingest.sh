@@ -10,10 +10,10 @@ set -euo pipefail
 : "${GITHUB_REPOSITORY:?GITHUB_REPOSITORY is required}"
 FOLDER="${FOLDER:-submissions}"
 FOLDER="${FOLDER%/}"
-ATTEMPTS=3
 
-git config user.name "${GIT_USER_NAME:-enacit4r-contrib}"
-git config user.email "${GIT_USER_EMAIL:-41898282+github-actions[bot]@users.noreply.github.com}"
+# shellcheck source=common.sh
+source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
+git_identity
 
 files=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/files" --paginate --jq '.[].filename')
 
@@ -49,29 +49,15 @@ ingest() {
   done <<<"$1"
 }
 
-pushed=""
-for attempt in $(seq 1 "$ATTEMPTS"); do
+step() {
+  local subs
   subs=$(existing)
   if [ -z "$subs" ]; then
     echo "Pull request #$PR_NUMBER has no submission under $FOLDER/ in the working tree. Nothing to ingest."
     exit 0
   fi
   ingest "$subs"
-  if git push origin "HEAD:$BASE"; then
-    pushed=1
-    break
-  fi
-  echo "The push to $BASE was refused (attempt $attempt of $ATTEMPTS). Fetch and ingest again."
-  git fetch -q origin "$BASE"
-  git reset -q --hard "origin/$BASE"
-done
+}
 
-if [ -z "$pushed" ]; then
-  echo "::error::The push to $BASE was refused $ATTEMPTS times." >&2
-  exit 1
-fi
-
-if [ -n "${DEPLOY_WORKFLOW:-}" ]; then
-  gh workflow run "$DEPLOY_WORKFLOW" --ref "$BASE"
-  echo "Started $DEPLOY_WORKFLOW on $BASE."
-fi
+push_with_retry step ingest
+dispatch_deploy

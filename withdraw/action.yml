@@ -1,0 +1,52 @@
+name: enacit4r-contrib withdraw
+description: >
+  Withdraw data from the base branch: run the project command, make one
+  commit, and push it. The caller checks out the base branch
+  (fetch-depth 0) and sets up its tools before this step.
+inputs:
+  target:
+    description: >
+      What to withdraw, in free text, for example a record number. The
+      command gets it as TARGET in the environment.
+    required: true
+  base:
+    description: Branch to push the result to.
+    required: true
+  command:
+    description: Command to run from the repository root, with TARGET in the environment.
+    required: true
+  reason:
+    description: Why the data leaves. It goes into the commit body.
+    default: ""
+  commit-prefix:
+    description: Start of the commit message, in the Conventional Commits form of your repository.
+    default: chore(data)
+  token:
+    description: Token for the GitHub API calls.
+    default: ${{ github.token }}
+  deploy-workflow:
+    description: >
+      Workflow file to start with workflow_dispatch on the base branch
+      after the push. Empty means no start.
+    default: ""
+  git-user-name:
+    description: Name of the commit author.
+    default: enacit4r-contrib
+  git-user-email:
+    description: Email of the commit author.
+    default: 41898282+github-actions[bot]@users.noreply.github.com
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      run: bash "$GITHUB_ACTION_PATH/withdraw.sh"
+      env:
+        TARGET: ${{ inputs.target }}
+        BASE: ${{ inputs.base }}
+        COMMAND: ${{ inputs.command }}
+        REASON: ${{ inputs.reason }}
+        GH_TOKEN: ${{ inputs.token }}
+        DEPLOY_WORKFLOW: ${{ inputs.deploy-workflow }}
+        COMMIT_PREFIX: ${{ inputs.commit-prefix }}
+        GIT_USER_NAME: ${{ inputs.git-user-name }}
+        GIT_USER_EMAIL: ${{ inputs.git-user-email }}
