@@ -1,0 +1,39 @@
+[project]
+name = "enacit4r_contrib"
+version = "0.1.0"
+description = "Data contribution pipeline for EPFL ENAC IT4R projects: intake, validation, submission"
+license = {text = "MIT"}
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115",
+    "pydantic>=2.9",
+    "python-multipart>=0.0.9",
+]
+
+[project.optional-dependencies]
+github = [
+    "githubkit[auth-app]>=0.12,<0.13",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "httpx>=0.27",
+    "ruff>=0.9",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["enacit4r_contrib"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I"]
