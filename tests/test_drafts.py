@@ -207,3 +207,64 @@ async def test_store_round_trip_and_no_temp_file(tmp_path):
         "draft.json",
         "files",
     ]
+
+
+async def published(store, **hooks):
+    id_ = await submitted(store)
+    review = Review(store, **hooks)
+    await review.decide(id_, State.ACCEPTED, "bob")
+    await review.decide(id_, State.PUBLISHED, "bob")
+    return review, id_
+
+
+async def test_withdraw_published_calls_the_hook(tmp_path):
+    store = FolderDraftStore(tmp_path)
+    withdrawn = []
+
+    async def on_withdraw(draft):
+        withdrawn.append((draft.id, draft.state))
+
+    review, id_ = await published(store, on_withdraw=on_withdraw)
+    with pytest.raises(ValueError):
+        await review.decide(id_, State.WITHDRAWN, "carol")
+    draft = await review.decide(id_, State.WITHDRAWN, "carol", "test data")
+    assert withdrawn == [(id_, State.PUBLISHED)]
+    assert draft.history[-1].state == State.WITHDRAWN
+    assert draft.history[-1].comment == "test data"
+    assert (await store.load(id_)).state == State.WITHDRAWN
+
+
+async def test_withdraw_only_from_published(tmp_path):
+    store = FolderDraftStore(tmp_path)
+    id_ = await submitted(store)
+    with pytest.raises(TransitionError):
+        await Review(store).decide(id_, State.WITHDRAWN, "bob", "why")
+
+
+async def test_failing_on_withdraw_leaves_the_draft_published(tmp_path):
+    store = FolderDraftStore(tmp_path)
+
+    async def broken(draft):
+        raise RuntimeError("database down")
+
+    review, id_ = await published(store, on_withdraw=broken)
+    with pytest.raises(RuntimeError):
+        await review.decide(id_, State.WITHDRAWN, "bob", "error")
+    draft = await store.load(id_)
+    assert draft.state == State.PUBLISHED and len(draft.history) == 2
+
+
+async def test_router_failing_withdraw_is_502(tmp_path):
+    async def broken(draft):
+        raise RuntimeError("database down")
+
+    store = FolderDraftStore(tmp_path)
+    _, id_ = await published(store)
+    app = FastAPI()
+    app.include_router(review_router(Review(store, on_withdraw=broken), reviewer=admin))
+    client = client_for(app)
+    client.headers["X-User"] = "bob"
+    body = {"state": "withdrawn", "comment": "error"}
+    r = await client.post(f"/drafts/{id_}/decision", json=body)
+    assert r.status_code == 502 and "stays published" in r.json()["detail"]
+    assert (await client.get(f"/drafts/{id_}")).json()["state"] == "published"

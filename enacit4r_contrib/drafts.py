@@ -33,11 +33,13 @@ class State(str, Enum):
     ACCEPTED = "accepted"
     REJECTED = "rejected"
     PUBLISHED = "published"
+    WITHDRAWN = "withdrawn"
 
 
 TRANSITIONS: dict[State, set[State]] = {
     State.SUBMITTED: {State.ACCEPTED, State.REJECTED},
     State.ACCEPTED: {State.PUBLISHED, State.REJECTED},
+    State.PUBLISHED: {State.WITHDRAWN},
 }
 """The allowed moves: from a state to the states it can go to."""
 
@@ -183,9 +185,11 @@ class Review:
         *,
         on_publish: Callable[[Draft, Bundle], Awaitable[None]] | None = None,
         on_change: Callable[[Draft, Decision], Awaitable[None]] | None = None,
+        on_withdraw: Callable[[Draft], Awaitable[None]] | None = None,
     ):
         self.store = store
         self.on_publish = on_publish
+        self.on_withdraw = on_withdraw
         self.on_change = on_change
 
     async def decide(
@@ -197,9 +201,14 @@ class Review:
             raise TransitionError(f"Cannot go from {draft.state.value} to {to.value}")
         if to == State.REJECTED and not (comment and comment.strip()):
             raise ValueError("A rejection needs a comment")
+        if to == State.WITHDRAWN and not (comment and comment.strip()):
+            raise ValueError("A withdrawal needs a comment")
         if to == State.PUBLISHED and self.on_publish:
             # The hook runs first: if it fails, the draft stays accepted.
             await self.on_publish(draft, await self.store.files(id))
+        if to == State.WITHDRAWN and self.on_withdraw:
+            # The hook runs first: if it fails, the draft stays published.
+            await self.on_withdraw(draft)
         decision = Decision(to, by, datetime.now(UTC).isoformat(), comment)
         draft.state = to
         draft.history.append(decision)
@@ -258,11 +267,13 @@ def review_router(review: Review, *, reviewer: Callable[..., str]) -> APIRouter:
         except ValueError as e:
             return JSONResponse({"detail": str(e)}, status_code=422)
         except Exception:
-            log.exception("publication of draft %s failed", id)
-            return JSONResponse(
-                {"detail": "Publication failed. The draft stays accepted."},
-                status_code=502,
-            )
+            if body.state == State.WITHDRAWN:
+                log.exception("withdrawal of draft %s failed", id)
+                detail = "Withdrawal failed. The draft stays published."
+            else:
+                log.exception("publication of draft %s failed", id)
+                detail = "Publication failed. The draft stays accepted."
+            return JSONResponse({"detail": detail}, status_code=502)
         return draft.to_dict()
 
     return router
