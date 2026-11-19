@@ -26,8 +26,9 @@ owner.
 
 1. Open the settings of the organization. Go to Developer settings,
    then GitHub Apps, then New GitHub App.
-2. In GitHub App name, write a unique name, for example
-   `my-dataset-contributions`.
+2. In GitHub App name, write a unique name of 34 characters or less,
+   for example `my-dataset-contributions`. The name shows as the
+   author of each pull request.
 3. In Homepage URL, write the URL of your site.
 4. Keep Callback URL empty.
 5. Under Webhook, clear Active.
