@@ -34,7 +34,7 @@ The projects use two patterns:
 
 ## Per project
 
-### resslab-hub (pattern B, most complete)
+### resslab-hub (pattern B, most complete, Pierre Ripoll)
 
 - Intake in the browser (`frontend/src/utils/intake.ts`) and a tar.gz to
   the backend (`frontend/src/utils/tar.ts`).
@@ -58,7 +58,7 @@ The projects use two patterns:
   starter-kit layout. The curator moves it into the xlsx for the next
   delivery.
 
-### hobel-iaqdb (pattern A)
+### hobel-iaqdb (pattern A, Yannick Marcon)
 
 - Upload to `tmp/`, then a draft in S3 at `draft/<id>/`, with a DB row
   (`services/study_draft.py`).
@@ -69,7 +69,7 @@ The projects use two patterns:
 - There are no review states. It already uses the shared `enacit4r_files`
   library for S3.
 
-### ALICE-ETHZ-AREMA (pattern A, editorial)
+### ALICE-ETHZ-AREMA (pattern A, editorial, Yannick Marcon)
 
 - Entities in Postgres with a state machine: draft, in-review, to-publish,
   and more (`backend/api/services/entity.py:45-128`). Keycloak roles control
@@ -78,7 +78,7 @@ The projects use two patterns:
   Elasticsearch.
 - There is no tabular validation, only pydantic types.
 
-### eesd-mmsdb (pattern A, minimal)
+### eesd-mmsdb (pattern A, minimal, Son Pham-Ba and Yannick Marcon)
 
 - An anonymous upload goes to a local folder `<uuid>/` with an `info.json`.
   The admins get an email (`backend/api/views/files.py:205-230`).

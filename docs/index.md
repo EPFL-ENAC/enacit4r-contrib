@@ -46,6 +46,27 @@ The difference is only the sink.
 The two patterns are ready to use. [Drafts in storage](drafts.md)
 tells you how to wire the draft pattern.
 
+### Examples in IT4R projects
+
+Each pattern comes from the habits of the developers who built the
+first projects. The table shows the projects that use each one, and the
+people who wrote most of their contribution code. Ask them about the
+choices that the library keeps.
+
+| Pattern          | Project                                                                                 | Store and publication                                       | Main authors                                                                                     |
+| ---------------- | --------------------------------------------------------------------------------------- | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| Pull request     | [resslab-hub](https://github.com/RESSLab-Team/resslab-hub)                              | Separate data repository, then a load into Postgres         | [Pierre Ripoll](https://github.com/pierreleripoll)                                               |
+| Pull request     | [eesd-modern-masonry-walls-db](https://github.com/EPFL-ENAC/eesd-modern-masonry-walls-db) | Separate data repository, then the static site build        | The first project on this library                                                                |
+| Draft in storage | [hobel-iaqdb](https://github.com/EPFL-ENAC/hobel-iaqdb)                                 | S3 drafts, then a load into Postgres and TimescaleDB        | [Yannick Marcon](https://github.com/ymarcon)                                                     |
+| Draft in storage | [ALICE-ETHZ-AREMA](https://github.com/EPFL-ENAC/ALICE-ETHZ-AREMA)                       | Postgres rows with review states, then Elasticsearch        | [Yannick Marcon](https://github.com/ymarcon)                                                     |
+| Draft in storage | [eesd-mmsdb](https://github.com/EPFL-ENAC/eesd-mmsdb)                                   | A local folder per upload, then a manual publication        | Son Pham-Ba, [Yannick Marcon](https://github.com/ymarcon)                                        |
+
+If the data is files in git and the reviewers work on GitHub, choose the
+pull request pattern. If a database or a search index is the published
+copy and the reviewers work in an admin page, choose the draft pattern.
+[The comparison](research/contribution-pipelines.md) gives the details of
+each project.
+
 ## The pages of this site
 
 - [Getting started](getting-started.md): install the library and add
