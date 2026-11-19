@@ -45,6 +45,8 @@ The router adds `POST /validate` and `POST /contributions`. The site
 tells you how to write a validator, create the GitHub App, call the
 endpoints from the browser, and test your integration.
 
+After a merge, the `ingest` GitHub action folds the submission into your data. See [Ingest](https://epfl-enac.github.io/enacit4r-contrib/ingest/).
+
 ## Develop
 
 ```bash

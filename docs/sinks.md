@@ -52,6 +52,8 @@ failure does not leave a branch without a pull request.
 with `branch_prefix`. The pipeline compares this number with
 `max_open`.
 
+After the merge, the [ingest action](ingest.md) folds the submission into your data.
+
 ## Write a different sink
 
 A `Sink` is a class with two async methods. You do not need to

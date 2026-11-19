@@ -56,6 +56,7 @@ write a small sink class. The [Sinks](sinks.md) page tells you how.
   requests.
 - [Sinks](sinks.md): what `GitHubPRSink` writes, and how to write a
   different sink.
+- [Ingest](ingest.md): fold a merged contribution into your data.
 - [Testing](testing.md): test your integration without GitHub.
 - [Contribution pipelines in five projects](research/contribution-pipelines.md):
   the study that gave the design.

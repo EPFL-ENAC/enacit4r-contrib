@@ -1,0 +1,49 @@
+name: enacit4r-contrib ingest
+description: >
+  Fold the submissions of a merged contribution pull request into the
+  data, one commit per submission, and push the result to the base branch.
+  The caller checks out the base branch (fetch-depth 0) and sets up its
+  tools before this step.
+inputs:
+  pr-number:
+    description: Number of the merged pull request.
+    required: true
+  base:
+    description: Branch to push the result to.
+    required: true
+  command:
+    description: >
+      Command to run once per submission, from the repository root, with
+      SUBMISSION=<folder>/<id> in the environment.
+    required: true
+  folder:
+    description: Folder of the submissions.
+    default: submissions
+  token:
+    description: Token for the GitHub API calls.
+    default: ${{ github.token }}
+  deploy-workflow:
+    description: >
+      Workflow file to start with workflow_dispatch on the base branch
+      after the push. Empty means no start.
+    default: ""
+  git-user-name:
+    description: Name of the commit author.
+    default: enacit4r-contrib
+  git-user-email:
+    description: Email of the commit author.
+    default: 41898282+github-actions[bot]@users.noreply.github.com
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      run: bash "$GITHUB_ACTION_PATH/ingest.sh"
+      env:
+        PR_NUMBER: ${{ inputs.pr-number }}
+        BASE: ${{ inputs.base }}
+        COMMAND: ${{ inputs.command }}
+        FOLDER: ${{ inputs.folder }}
+        GH_TOKEN: ${{ inputs.token }}
+        DEPLOY_WORKFLOW: ${{ inputs.deploy-workflow }}
+        GIT_USER_NAME: ${{ inputs.git-user-name }}
+        GIT_USER_EMAIL: ${{ inputs.git-user-email }}
