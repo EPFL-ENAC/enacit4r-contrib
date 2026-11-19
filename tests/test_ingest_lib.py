@@ -142,3 +142,89 @@ def test_run_exit_codes(tmp_path, capsys):
 
     assert run(fail, ["s1"]) == 1
     assert capsys.readouterr().out == "s1 does not pass\nerror: t.csv:3: bad\n"
+
+
+def retire(number):
+    """Replace the row with id `number` by a row that holds only the id."""
+    return lambda row: [row[0], ""] if row[0] == number else row
+
+
+def test_rewrite_rows_crlf_bom_quoted_and_untouched_bytes(tmp_path):
+    path = tmp_path / "t.csv"
+    old = b'\xef\xbb\xbfid,name\r\n1,"a, ""x"""\r\n2,b\r\n3,"multi\r\nline"\r\n'
+    path.write_bytes(old)
+    plan = Plan()
+    plan.rewrite_rows(path, retire("2"))
+    plan.apply()
+    assert path.read_bytes() == old.replace(b"2,b\r\n", b"2,\r\n")
+    assert parse(path.read_bytes())[3] == ["3", "multi\r\nline"]
+
+
+def test_rewrite_rows_replace_quoted_and_delete(tmp_path):
+    path = tmp_path / "t.csv"
+    path.write_bytes(b"id,name\n1,a\n2,b\n3,c")
+    plan = Plan()
+    plan.rewrite_rows(
+        path,
+        lambda r: None if r[0] == "1" else [r[0], 'q, "z"'] if r[0] == "3" else r,
+    )
+    plan.apply()
+    assert path.read_bytes() == b'id,name\n2,b\n3,"q, ""z"""'
+
+
+def test_rewrite_rows_header_rows_are_never_passed(tmp_path):
+    path = tmp_path / "t.csv"
+    path.write_bytes(b"id\nunit\n1\n")
+    seen = []
+    plan = Plan()
+    plan.rewrite_rows(path, lambda r: seen.append(r) or None, header_rows=2)
+    plan.apply()
+    assert seen == [["1"]]
+    assert path.read_bytes() == b"id\nunit\n"
+
+
+def test_rewrite_rows_sees_appended_rows(tmp_path):
+    path = tmp_path / "t.csv"
+    path.write_bytes(b"id,name\n1,a\n")
+    plan = Plan()
+    plan.append(path, [["2", "b"]])
+    plan.rewrite_rows(path, retire("2"))
+    plan.apply()
+    assert path.read_bytes() == b"id,name\n1,a\n2,\n"
+
+
+def test_rewrite_no_match_and_missing_files_write_nothing(tmp_path):
+    data, _ = make_data(tmp_path)
+    before = tree_hash(tmp_path)
+    plan = Plan()
+    plan.rewrite_rows(data / "table.csv", lambda r: r)
+    plan.rewrite_rows(data / "missing.csv", lambda r: None)
+    plan.delete(data / "gone.csv")
+    plan.create(data / "new.csv", b"x")
+    with pytest.raises(IngestError) as e:
+        plan.apply()
+    messages = sorted((i.file, i.message) for i in e.value.issues)
+    assert messages == [
+        (str(data / "gone.csv"), "does not exist"),
+        (str(data / "missing.csv"), "does not exist"),
+        (str(data / "table.csv"), "no row matches the change"),
+    ]
+    assert tree_hash(tmp_path) == before
+
+
+def test_rewrite_no_match_allowed(tmp_path):
+    path = tmp_path / "t.csv"
+    path.write_bytes(b"id\n1\n")
+    plan = Plan()
+    plan.rewrite_rows(path, lambda r: r, expect_match=False)
+    plan.apply()
+    assert path.read_bytes() == b"id\n1\n"
+
+
+def test_delete_removes_the_file(tmp_path):
+    path = tmp_path / "curve.csv"
+    path.write_bytes(b"x")
+    plan = Plan()
+    plan.delete(path)
+    plan.apply()
+    assert not path.exists()
