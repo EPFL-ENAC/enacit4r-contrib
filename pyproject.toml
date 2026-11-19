@@ -1,6 +1,6 @@
 [project]
 name = "enacit4r_contrib"
-version = "0.3.0"
+version = "0.3.1"
 description = "Data contribution pipeline for EPFL ENAC IT4R projects: intake, validation, submission"
 license = {text = "MIT"}
 readme = "README.md"

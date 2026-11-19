@@ -44,7 +44,7 @@ ingest() {
     if git diff --cached --quiet; then
       echo "No change for $sub. No commit."
     else
-      git commit -q -m "data: ingest $sub (#$PR_NUMBER)"
+      git commit -q -m "${COMMIT_PREFIX:-chore(data)}: ingest $sub (#$PR_NUMBER)"
     fi
   done <<<"$1"
 }

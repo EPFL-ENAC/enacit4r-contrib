@@ -94,7 +94,7 @@ def test_one_submission_is_committed_pushed_and_deployed(repo):
     result = run(repo)
     assert result.returncode == 0, result.stdout + result.stderr
     assert origin_log(repo).splitlines() == [
-        "data: ingest submissions/abc (#7)",
+        "chore(data): ingest submissions/abc (#7)",
         "merge contrib/abc",
     ]
     assert origin_file(repo, "data.txt") == "header\nrow abc\n"
@@ -141,7 +141,7 @@ def test_moved_base_is_fetched_and_ingested_again(repo):
     assert result.returncode == 0, result.stdout + result.stderr
     assert "refused" in result.stdout
     assert origin_log(repo).splitlines() == [
-        "data: ingest submissions/abc (#7)",
+        "chore(data): ingest submissions/abc (#7)",
         "concurrent",
         "merge contrib/abc",
     ]

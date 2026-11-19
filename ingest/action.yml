@@ -27,6 +27,9 @@ inputs:
       Workflow file to start with workflow_dispatch on the base branch
       after the push. Empty means no start.
     default: ""
+  commit-prefix:
+    description: Start of each commit message, in the Conventional Commits form of your repository.
+    default: chore(data)
   git-user-name:
     description: Name of the commit author.
     default: enacit4r-contrib
@@ -45,5 +48,6 @@ runs:
         FOLDER: ${{ inputs.folder }}
         GH_TOKEN: ${{ inputs.token }}
         DEPLOY_WORKFLOW: ${{ inputs.deploy-workflow }}
+        COMMIT_PREFIX: ${{ inputs.commit-prefix }}
         GIT_USER_NAME: ${{ inputs.git-user-name }}
         GIT_USER_EMAIL: ${{ inputs.git-user-email }}

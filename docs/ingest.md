@@ -14,7 +14,7 @@ request from a `contrib/<id>` branch.
 2. For each submission, it runs your command with
    `SUBMISSION=<folder>/<id>`, from the repository root.
 3. It makes one commit per submission:
-   `data: ingest <folder>/<id> (#<pr>)`. If the command changes nothing,
+   `chore(data): ingest <folder>/<id> (#<pr>)` (input `commit-prefix`). If the command changes nothing,
    the action makes no commit.
 4. It pushes to the base branch. If the base branch moved, the push is
    refused. Then the action fetches the base branch and does all the
@@ -73,7 +73,7 @@ jobs:
           ref: ${{ github.event.pull_request.base.ref }}
           fetch-depth: 0
       - uses: astral-sh/setup-uv@v6
-      - uses: EPFL-ENAC/enacit4r-contrib/ingest@0.3.0
+      - uses: EPFL-ENAC/enacit4r-contrib/ingest@0.3.1
         with:
           pr-number: ${{ github.event.pull_request.number }}
           base: ${{ github.event.pull_request.base.ref }}
@@ -89,6 +89,7 @@ The other inputs have these default values:
 | `folder`         | `submissions`                                           |
 | `token`          | `${{ github.token }}`                                   |
 | `deploy-workflow` | Empty: the action starts no workflow                   |
+| `commit-prefix`  | `chore(data)`                                           |
 | `git-user-name`  | `enacit4r-contrib`                                      |
 | `git-user-email` | `41898282+github-actions[bot]@users.noreply.github.com` |
 

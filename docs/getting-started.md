@@ -16,7 +16,7 @@ release does not change your backend without a review. The tag has no
 dependencies = ["enacit4r-contrib[github]"]
 
 [tool.uv.sources]
-enacit4r-contrib = { git = "https://github.com/EPFL-ENAC/enacit4r-contrib", tag = "0.3.0" }
+enacit4r-contrib = { git = "https://github.com/EPFL-ENAC/enacit4r-contrib", tag = "0.3.1" }
 ```
 
 Then update the lock file:
