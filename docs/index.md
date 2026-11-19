@@ -59,6 +59,7 @@ tells you how to wire the draft pattern.
   different sink.
 - [Drafts in storage](drafts.md): drafts, an admin review, and publication.
 - [Ingest](ingest.md): fold a merged contribution into your data.
+- [Withdraw data](withdraw.md): take accepted data out of your dataset.
 - [Testing](testing.md): test your integration without GitHub.
 - [Contribution pipelines in five projects](research/contribution-pipelines.md):
   the study that gave the design.

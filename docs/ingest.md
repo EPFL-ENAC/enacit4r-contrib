@@ -73,7 +73,7 @@ jobs:
           ref: ${{ github.event.pull_request.base.ref }}
           fetch-depth: 0
       - uses: astral-sh/setup-uv@v6
-      - uses: EPFL-ENAC/enacit4r-contrib/ingest@0.3.1
+      - uses: EPFL-ENAC/enacit4r-contrib/ingest@0.4.0
         with:
           pr-number: ${{ github.event.pull_request.number }}
           base: ${{ github.event.pull_request.base.ref }}
@@ -121,8 +121,7 @@ command keeps only the rules of your data.
 - `Plan.append` does not change the old bytes of a CSV.
 - `run` prints the errors of an `IngestError` and returns exit code 1.
 
-This example adds the rows of `table.csv` to `data/table.csv`, which
-has the columns `id` and `name`. It copies each curve
+This example adds the rows of `table.csv` to `data/table.csv`. It copies each curve
 `curves/<name>.csv` to `data/curves/<id>.csv`.
 
 ```python
@@ -173,8 +172,9 @@ The ingest command failed for submissions/<id>. Nothing was pushed.
 ```
 
 The submission stays on the base branch. Push a fix, then run the
-failed job again in the Actions tab.
+failed job again.
 
 ## Next step
 
 Read [Testing](testing.md) to test your integration without GitHub.
+To take data out, read [Withdraw data](withdraw.md).

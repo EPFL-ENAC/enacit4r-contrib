@@ -27,8 +27,9 @@ stateDiagram-v2
     submitted --> rejected
     accepted --> published
     accepted --> rejected
+    published --> withdrawn
     rejected --> [*]
-    published --> [*]
+    withdrawn --> [*]
 ```
 
 Each decision adds a `Decision` to the history of the draft: the new
@@ -97,17 +98,21 @@ unknown draft or file answers 404.
 
 To publish, the admin moves an accepted draft to `published`. `Review`
 calls `on_publish(draft, files)` first. If the hook fails, the router
-answers 502 and the draft stays `accepted`. The admin can try again.
+answers 502 and the draft stays `accepted`.
 
 After each saved decision, `Review` calls `on_change(draft, decision)`.
-Use it to send an e-mail or write a log entry. If `on_change` fails,
-the decision stays saved and the library writes a log entry.
+Use it to send an e-mail. If `on_change` fails,
+the decision stays saved and the library logs the error.
+
+To take published data back, the admin moves the draft to `withdrawn`,
+with a comment. `Review` calls `on_withdraw(draft)` first. If it fails,
+the draft stays `published`. Read [Withdraw data](withdraw.md).
 
 ## Store drafts in S3
 
 To use S3 or a database, write a class with the four methods of
-`DraftStore`. The S3 calls below are placeholders. Replace them with
-the calls of your S3 client.
+`DraftStore`. The S3 calls below are placeholders for the calls of
+your S3 client.
 
 ```python
 import json
@@ -139,7 +144,7 @@ class S3DraftStore:
         return [d for d in drafts if state is None or d.state == state]
 ```
 
-Make sure that `load` raises `KeyError` for a missing draft. Refuse an
+`load` must raise `KeyError` for a missing draft. Refuse an
 ID that is not a single safe path segment.
 
 ## The three projects
@@ -150,9 +155,8 @@ ID that is not a single safe path segment.
 | ALICE-ETHZ-AREMA | A store on its Postgres rows     | Keycloak roles as reviewer | Index into Elasticsearch        |
 | eesd-mmsdb       | `FolderDraftStore`               | An admin password          | The manual git and LFS step     |
 
-ALICE has more states than this module. It can keep its own state
-machine and use only the sink. Each project gets a decision history
-that it does not have now.
+ALICE has more states. It can keep its own state machine and use only
+the sink. Each project gets a decision history.
 
 ## Next step
 
