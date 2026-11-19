@@ -104,14 +104,18 @@ Each project keeps:
 - Its decision step and its publication: a merge workflow, an ingestion job,
   or an indexing job.
 
-## Pattern A: the seam, not built yet
+## Pattern A in the library
 
-A pattern A project implements `Sink` with its own storage:
+Version 0.3.0 adds pattern A to the library (`enacit4r_contrib.drafts`):
 
-- `submit` writes the bundle to S3 (`enacit4r_files`), a DB row, or a folder,
-  and returns a `Receipt`.
-- `open_count` counts the drafts that wait for a review.
+- `DraftSink` and a `DraftStore` keep each contribution as a draft. The
+  library gives a folder store. A project can write an S3 store.
+- `Review` moves a draft through submitted, accepted, rejected and
+  published, with a log of each decision. It calls the project's publish
+  hook (a database load or an index update) before it records "published".
+- `review_router` gives the reviewer endpoints. The project gives the
+  login check.
 
-The review states and publication stay in the project until a second
-project needs the same state machine. ALICE's transition table
-(`entity.py:45-128`) is the model for it.
+The transition table follows ALICE's flow (`entity.py:45-128`), with the
+decision log that ALICE does not have. The page "Drafts in storage" tells
+how each project maps onto these parts.
