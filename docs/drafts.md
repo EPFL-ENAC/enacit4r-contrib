@@ -1,9 +1,8 @@
 # Drafts in storage
 
-In the draft pattern, each contribution waits as a draft in your
-storage. An admin accepts it, rejects it, or publishes it in your app.
-The module `enacit4r_contrib.drafts` gives this pattern. Only the sink
-and the decision step differ from pull requests.
+Each contribution waits as a draft in your storage. An admin accepts,
+rejects or publishes it in your app. Only the sink and the decision step
+differ from pull requests.
 
 ## When to use drafts
 
