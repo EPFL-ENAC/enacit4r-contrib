@@ -1,8 +1,11 @@
+import json
+import re
 from datetime import date
 
 import httpx
 import pytest
 from fastapi import FastAPI, Header, HTTPException
+from pydantic import BaseModel
 
 from enacit4r_contrib import Contributor, Issue, Pipeline, Report, contribution_router
 from enacit4r_contrib.drafts import (
@@ -13,6 +16,7 @@ from enacit4r_contrib.drafts import (
     State,
     TransitionError,
     review_router,
+    secret_id,
 )
 
 PERSON = {"name": "Ada Lovelace", "email": "ada@example.org", "institution": "EPFL"}
@@ -268,3 +272,129 @@ async def test_router_failing_withdraw_is_502(tmp_path):
     r = await client.post(f"/drafts/{id_}/decision", json=body)
     assert r.status_code == 502 and "stays published" in r.json()["detail"]
     assert (await client.get(f"/drafts/{id_}")).json()["state"] == "published"
+
+
+class Person(BaseModel):
+    name: str
+    email: str
+    institution: str | None = None
+    method: str
+
+
+def state_app(tmp_path, **sink_kw):
+    store = FolderDraftStore(tmp_path, contributor=Person)
+    sink = DraftSink(store, **sink_kw)
+    app = FastAPI()
+    app.include_router(
+        contribution_router(
+            Pipeline(validate, sink),
+            allow=["*.csv"],
+            contributor=Person,
+            public_state=sink.state,
+        )
+    )
+    return store, client_for(app)
+
+
+UP = [("files", ("a.csv", b"a,b\n1,2\n", "text/csv"))]
+MMSDB = {"name": "Ada", "email": "ada@example.org", "method": "shake table"}
+
+
+async def test_custom_contributor_model_reaches_the_draft(tmp_path):
+    store, client = state_app(tmp_path)
+    r = await client.post("/contributions", data={**MMSDB, "institution": ""}, files=UP)
+    assert r.status_code == 201, r.text
+    draft = await store.load(r.json()["id"])
+    assert isinstance(draft.contributor, Person)
+    assert draft.contributor.method == "shake table"
+    assert draft.contributor.institution is None
+
+
+async def test_custom_contributor_missing_field_is_422(tmp_path):
+    _, client = state_app(tmp_path)
+    r = await client.post("/contributions", data=PERSON, files=UP)
+    assert r.status_code == 422
+
+
+async def test_json_contributor_wins_over_flat_fields(tmp_path):
+    store, client = state_app(tmp_path)
+    data = {"contributor": json.dumps(MMSDB), "method": "flat", "name": "Flat"}
+    r = await client.post("/contributions", data=data, files=UP)
+    assert r.status_code == 201, r.text
+    draft = await store.load(r.json()["id"])
+    assert draft.contributor.method == "shake table" and draft.contributor.name == "Ada"
+
+
+async def test_json_contributor_not_an_object_is_422(tmp_path):
+    _, client = state_app(tmp_path)
+    r = await client.post("/contributions", data={"contributor": "[1]"}, files=UP)
+    assert r.status_code == 422
+
+
+async def test_on_submit_called_once_after_save(tmp_path):
+    seen = []
+
+    async def on_submit(draft):
+        seen.append((draft.id, (await store.load(draft.id)).state))
+
+    store = FolderDraftStore(tmp_path)
+    sink = DraftSink(store, on_submit=on_submit)
+    receipt = await sink.submit(BUNDLE, Contributor(**PERSON), Report([]))
+    assert seen == [(receipt.id, State.SUBMITTED)]
+
+
+async def test_failing_on_submit_keeps_the_201(tmp_path, caplog):
+    async def on_submit(draft):
+        raise RuntimeError("mail down")
+
+    store, client = state_app(tmp_path, on_submit=on_submit)
+    r = await client.post("/contributions", data=MMSDB, files=UP)
+    assert r.status_code == 201, r.text
+    assert (await store.load(r.json()["id"])).state == State.SUBMITTED
+    assert "on_submit failed" in caplog.text
+
+
+async def test_public_state_route(tmp_path):
+    store, client = state_app(tmp_path, make_id=secret_id)
+    r = await client.post("/contributions", data=MMSDB, files=UP)
+    id_ = r.json()["id"]
+    r = await client.get(f"/contributions/{id_}/state")
+    assert r.status_code == 200
+    assert r.json() == {"id": id_, "state": "submitted"}
+    assert "ada@example.org" not in r.text
+    r = await client.get("/contributions/nope/state")
+    assert r.status_code == 404
+
+
+async def test_state_route_absent_without_public_state(tmp_path):
+    store = FolderDraftStore(tmp_path)
+    app = FastAPI()
+    app.include_router(
+        contribution_router(Pipeline(validate, DraftSink(store)), allow=["*.csv"])
+    )
+    id_ = await submitted(store)
+    r = await client_for(app).get(f"/contributions/{id_}/state")
+    assert r.status_code == 404 and r.json() == {"detail": "Not Found"}
+
+
+async def test_sink_state(tmp_path):
+    store = FolderDraftStore(tmp_path)
+    id_ = await submitted(store)
+    sink = DraftSink(store)
+    assert await sink.state(id_) == "submitted"
+    assert await sink.state("missing") is None
+    assert await sink.state("..") is None
+
+
+def test_secret_id_is_long_and_url_safe():
+    ids = {secret_id() for _ in range(50)}
+    assert len(ids) == 50
+    assert all(len(i) >= 22 and re.fullmatch(r"[A-Za-z0-9_-]+", i) for i in ids)
+
+
+async def test_make_id_is_used(tmp_path):
+    store = FolderDraftStore(tmp_path)
+    sink = DraftSink(store, make_id=lambda c: f"id-{c.name.lower()}")
+    receipt = await sink.submit(BUNDLE, Contributor(**PERSON), Report([]))
+    assert receipt.id == "id-ada lovelace"
+    assert (await store.load(receipt.id)).id == receipt.id

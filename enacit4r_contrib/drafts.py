@@ -60,7 +60,7 @@ class Decision:
 class Draft:
     id: str
     state: State
-    contributor: Contributor
+    contributor: BaseModel  # Contributor, or the model given to the store
     report: Report
     files: list[str]
     history: list[Decision] = field(default_factory=list)
@@ -76,11 +76,11 @@ class Draft:
         }
 
     @classmethod
-    def from_dict(cls, d: dict) -> "Draft":
+    def from_dict(cls, d: dict, contributor: type[BaseModel] = Contributor) -> "Draft":
         return cls(
             id=d["id"],
             state=State(d["state"]),
-            contributor=Contributor(**d["contributor"]),
+            contributor=contributor(**d["contributor"]),
             report=Report([Issue(**i) for i in d["report"]["issues"]]),
             files=d["files"],
             history=[
@@ -112,8 +112,9 @@ def _check_id(id: str) -> str:
 class FolderDraftStore:
     """One folder per draft: `<root>/<id>/draft.json` and `<root>/<id>/files/`."""
 
-    def __init__(self, root: Path):
+    def __init__(self, root: Path, *, contributor: type[BaseModel] = Contributor):
         self.root = Path(root)
+        self.contributor = contributor
 
     async def save(self, draft: Draft, bundle: Bundle | None) -> None:
         folder = self.root / _check_id(draft.id)
@@ -135,7 +136,7 @@ class FolderDraftStore:
     async def load(self, id: str) -> Draft:
         path = self.root / _check_id(id) / "draft.json"
         try:
-            return Draft.from_dict(json.loads(path.read_text()))
+            return Draft.from_dict(json.loads(path.read_text()), self.contributor)
         except FileNotFoundError:
             raise KeyError(id) from None
 
@@ -148,26 +149,62 @@ class FolderDraftStore:
         if not self.root.exists():
             return []
         drafts = [
-            Draft.from_dict(json.loads(p.read_text()))
+            Draft.from_dict(json.loads(p.read_text()), self.contributor)
             for p in sorted(self.root.glob("*/draft.json"))
         ]
         return [d for d in drafts if state is None or d.state == state]
 
 
-class DraftSink:
-    """A `Sink` that saves each contribution as a draft in SUBMITTED."""
+def secret_id(contributor: BaseModel | None = None) -> str:
+    """A random id of 128 bits (22 URL-safe characters). Use it as `make_id`
+    when the id gives access to the state of the draft."""
+    return secrets.token_urlsafe(16)
 
-    def __init__(self, store: DraftStore, *, today: Callable[[], date] = date.today):
+
+class DraftSink:
+    """A `Sink` that saves each contribution as a draft in SUBMITTED.
+
+    make_id: builds the draft id. The default is `YYYY-MM-DD-<name slug>-<6 hex>`.
+    on_submit: awaited after the draft is saved. Its errors are logged only.
+    """
+
+    def __init__(
+        self,
+        store: DraftStore,
+        *,
+        today: Callable[[], date] = date.today,
+        make_id: Callable[[BaseModel], str] | None = None,
+        on_submit: Callable[[Draft], Awaitable[None]] | None = None,
+    ):
         self.store = store
         self.today = today
+        self.make_id = make_id or self._dated_id
+        self.on_submit = on_submit
+
+    def _dated_id(self, contributor: BaseModel) -> str:
+        name = slug(getattr(contributor, "name", "") or "")
+        return f"{self.today():%Y-%m-%d}-{name}-{secrets.token_hex(3)}"
 
     async def submit(
         self, bundle: Bundle, contributor: Contributor, report: Report
     ) -> Receipt:
-        id_ = f"{self.today():%Y-%m-%d}-{slug(contributor.name)}-{secrets.token_hex(3)}"
+        id_ = self.make_id(contributor)
         draft = Draft(id_, State.SUBMITTED, contributor, report, list(bundle))
         await self.store.save(draft, bundle)
+        if self.on_submit:
+            try:
+                await self.on_submit(draft)
+            except Exception:
+                # The draft is saved: a failed notice must not undo it.
+                log.exception("on_submit failed for draft %s", id_)
         return Receipt(id_, "")
+
+    async def state(self, id: str) -> str | None:
+        """The state of the draft, or None when it does not exist."""
+        try:
+            return (await self.store.load(id)).state.value
+        except KeyError:
+            return None
 
     async def open_count(self) -> int:
         return sum(

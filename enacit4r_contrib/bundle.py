@@ -37,7 +37,16 @@ def read_upload(
     max_files: int = 500,
     max_file_bytes: int = 50 * 2**20,
     max_total_bytes: int = 200 * 2**20,
+    ignore_case: bool = False,
 ) -> tuple[Bundle, list[Issue]]:
+    """ignore_case=True: `allow` and `skip` globs match in any case (`*.ply`
+    matches `X.PLY`). The bundle keeps the original case of each path."""
+
+    def matches(path: str, globs) -> bool:
+        if ignore_case:
+            path, globs = path.lower(), [g.lower() for g in globs]
+        return any(fnmatch.fnmatchcase(path, glob) for glob in globs)
+
     files: list[tuple[str, bytes]] = []
     total = 0
     for source, name, stream in _entries(items):
@@ -68,7 +77,7 @@ def read_upload(
     for path, data in files:
         if path in seen:
             issues.append(Issue("Duplicate file", file=path))
-        elif any(fnmatch.fnmatchcase(path, glob) for glob in skip):
+        elif matches(path, skip):
             issues.append(
                 Issue(
                     "Skipped: this upload does not take this file",
@@ -76,7 +85,7 @@ def read_upload(
                     severity="warning",
                 )
             )
-        elif not any(fnmatch.fnmatchcase(path, glob) for glob in allow):
+        elif not matches(path, allow):
             issues.append(Issue("Unexpected file: not part of the template", file=path))
         else:
             bundle[path] = data

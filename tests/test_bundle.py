@@ -187,3 +187,24 @@ def test_skipped_files_are_dropped_with_a_warning():
     )
     assert list(bundle) == ["data.csv"]
     assert [(i.file, i.severity) for i in issues] == [("fig/photo.jpg", "warning")]
+
+
+def test_ignore_case_false_refuses_upper_case_suffix():
+    bundle, issues = read_upload([("X.PLY", b"p")], allow=["*.ply"])
+    assert bundle == {}
+    assert issues[0].message.startswith("Unexpected file")
+
+
+def test_ignore_case_true_matches_and_keeps_the_case():
+    bundle, issues = read_upload([("X.PLY", b"p")], allow=["*.ply"], ignore_case=True)
+    assert bundle == {"X.PLY": b"p"} and issues == []
+
+
+def test_ignore_case_true_applies_to_skip():
+    bundle, issues = read_upload(
+        [("a.ply", b"p"), ("B.TXT", b"t")],
+        allow=["*.ply"],
+        skip=["*.txt"],
+        ignore_case=True,
+    )
+    assert bundle == {"a.ply": b"p"} and issues[0].severity == "warning"

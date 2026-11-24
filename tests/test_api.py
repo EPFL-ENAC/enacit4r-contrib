@@ -1,3 +1,5 @@
+import json
+
 import httpx
 import pytest
 from fastapi import FastAPI
@@ -207,3 +209,43 @@ async def test_skipped_files_show_in_the_answer_and_the_pr():
     assert [i["file"] for i in r.json()["issues"]] == ["photo.jpg"]
     assert "photo.jpg" in repo.pulls[0]["body"]
     assert list(repo.commits[0]["files"]) == [f"submissions/{r.json()['id']}/good.csv"]
+
+
+async def test_contributor_json_field_is_accepted():
+    client, repo = make()
+    data = {"contributor": json.dumps(PERSON), "name": "ignored"}
+    r = await client.post("/contributions", data=data, files=files("good.csv"))
+    assert r.status_code == 201, r.text
+
+
+async def test_contributor_invalid_json_is_422():
+    client, _ = make()
+    r = await client.post(
+        "/contributions", data={"contributor": "{not json"}, files=files("good.csv")
+    )
+    assert r.status_code == 422
+
+
+async def test_contributor_json_is_validated():
+    client, _ = make()
+    bad = json.dumps({**PERSON, "email": "nope"})
+    r = await client.post(
+        "/contributions", data={"contributor": bad}, files=files("good.csv")
+    )
+    assert r.status_code == 422
+
+
+async def test_ignore_case_in_router():
+    up = [("files", ("X.CSV", b"a,b\n1,2\n", "text/csv"))]
+    client, _ = make()
+    r = await client.post("/validate", files=up)
+    assert r.json()["valid"] is False
+    client, _ = make(ignore_case=True)
+    r = await client.post("/validate", files=up)
+    assert r.json()["valid"] is True
+
+
+async def test_no_state_route_without_public_state():
+    client, _ = make()
+    r = await client.get("/contributions/x/state")
+    assert r.status_code in (404, 405)
