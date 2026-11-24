@@ -4,6 +4,9 @@
 from dataclasses import dataclass
 from typing import Protocol
 
+# GitHub repository roles, from the lowest to the highest.
+ROLES = ("none", "read", "triage", "write", "maintain", "admin")
+
 
 @dataclass(frozen=True)
 class PullRef:
@@ -39,3 +42,9 @@ class Repo(Protocol):
 
     async def delete_branch(self, branch: str) -> None:
         """Delete the branch (cleanup after a failed submission)."""
+
+
+class Permissions(Protocol):
+    async def permission(self, login: str) -> str:
+        """The GitHub user's role on the repository: "admin", "maintain",
+        "write", "triage", "read" or "none" (not a collaborator)."""

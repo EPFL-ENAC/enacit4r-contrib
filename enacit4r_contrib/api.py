@@ -13,7 +13,7 @@ import time
 from collections import defaultdict, deque
 from collections.abc import Awaitable, Callable
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ValidationError
 from starlette.datastructures import UploadFile
@@ -39,6 +39,10 @@ def _detail(status: int, detail) -> JSONResponse:
     return JSONResponse({"detail": detail}, status_code=status)
 
 
+def _no_identity() -> None:
+    return None
+
+
 def contribution_router(
     pipeline: Pipeline,
     *,
@@ -53,6 +57,7 @@ def contribution_router(
     contributor: type[BaseModel] = Contributor,
     public_state: Callable[[str], Awaitable[str | None]] | None = None,
     ignore_case: bool = False,
+    identity: Callable | None = None,
 ) -> APIRouter:
     """POST /validate checks an upload; POST /contributions submits it.
 
@@ -61,6 +66,9 @@ def contribution_router(
     one JSON form field `contributor`. A sink can need the `Contributor` fields.
     public_state: adds GET /contributions/{id}/state, which returns only the state.
     ignore_case: `allow` and `skip` globs match in any case.
+    identity: a FastAPI dependency that returns the verified fields of a
+    signed-in contributor (for example "name" and "email"), or None. Its
+    values replace the same fields of the form.
     """
     router = APIRouter()
     max_attempts, window = rate_limit
@@ -102,7 +110,7 @@ def contribution_router(
             ignore_case=ignore_case,
         )
 
-    def read_contributor(form) -> BaseModel:
+    def read_contributor(form, verified: dict | None) -> BaseModel:
         """Raise ValidationError or ValueError when the fields are not valid."""
         if isinstance(raw := form.get("contributor"), str):
             values = json.loads(raw)
@@ -114,6 +122,7 @@ def contribution_router(
                 for k in contributor.model_fields
                 if isinstance(v := form.get(k), str)
             }
+        values = {**values, **(verified or {})}
         # A blank optional input arrives as "": treat it as absent.
         return contributor(
             **{
@@ -145,7 +154,9 @@ def contribution_router(
         return Report(issues).to_dict()
 
     @router.post("/contributions", status_code=201)
-    async def contribute(request: Request):
+    async def contribute(
+        request: Request, verified: dict | None = Depends(identity or _no_identity)
+    ):
         if not enabled:
             return _detail(503, "Contributions are not open yet")
         key = client_key(request)
@@ -158,7 +169,7 @@ def contribution_router(
 
         async with request.form(max_files=max_files) as form:
             try:
-                person = read_contributor(form)
+                person = read_contributor(form, verified)
             except ValidationError as e:
                 return _detail(422, json.loads(e.json(include_url=False)))
             except ValueError as e:  # json.JSONDecodeError is a ValueError

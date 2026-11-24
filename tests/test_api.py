@@ -249,3 +249,23 @@ async def test_no_state_route_without_public_state():
     client, _ = make()
     r = await client.get("/contributions/x/state")
     assert r.status_code in (404, 405)
+
+
+async def test_identity_overrides_form_name_and_email():
+    def identity():
+        return {"name": "Grace", "email": "grace@example.org"}
+
+    client, repo = make(identity=identity)
+    r = await client.post("/contributions", data=PERSON, files=files("good.csv"))
+    assert r.status_code == 201, r.text
+    assert repo.pulls[0]["title"] == "Data contribution: Grace (EPFL)"
+    assert "grace@example.org" in repo.commits[0]["message"]
+    assert "ada@example.org" not in repo.commits[0]["message"]
+
+
+async def test_identity_none_keeps_form_values():
+    client, repo = make(identity=lambda: None)
+    r = await client.post("/contributions", data=PERSON, files=files("good.csv"))
+    assert r.status_code == 201, r.text
+    assert repo.pulls[0]["title"] == "Data contribution: Ada (EPFL)"
+    assert "ada@example.org" in repo.commits[0]["message"]
