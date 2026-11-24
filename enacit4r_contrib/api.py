@@ -122,7 +122,13 @@ def contribution_router(
                 for k in contributor.model_fields
                 if isinstance(v := form.get(k), str)
             }
-        values = {**values, **(verified or {})}
+        # A blank verified value (a GitHub account with no name) keeps the form value.
+        verified = {
+            k: v
+            for k, v in (verified or {}).items()
+            if v is not None and str(v).strip()
+        }
+        values = {**values, **verified}
         # A blank optional input arrives as "": treat it as absent.
         return contributor(
             **{

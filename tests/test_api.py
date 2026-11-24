@@ -269,3 +269,10 @@ async def test_identity_none_keeps_form_values():
     assert r.status_code == 201, r.text
     assert repo.pulls[0]["title"] == "Data contribution: Ada (EPFL)"
     assert "ada@example.org" in repo.commits[0]["message"]
+
+
+async def test_blank_identity_value_keeps_form_value():
+    client, repo = make(identity=lambda: {"name": " ", "email": None})
+    r = await client.post("/contributions", data=PERSON, files=files("good.csv"))
+    assert r.status_code == 201, r.text
+    assert repo.pulls[0]["title"] == "Data contribution: Ada (EPFL)"

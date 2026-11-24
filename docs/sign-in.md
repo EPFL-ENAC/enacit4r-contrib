@@ -19,16 +19,18 @@ contributor does not sign in, the form works as before.
 
 ## The parts
 
-| Part                    | Job                                                    |
-| ----------------------- | ------------------------------------------------------ |
-| Keycloak `realm` `external` | Signs in users on `https://enac-it-sso2.epfl.ch`   |
-| GitHub provider         | Lets a user sign in to Keycloak with a GitHub account  |
-| `github_login` mapper   | Puts the GitHub login of the user in the token         |
-| `keycloak-js`           | Signs in the user in the frontend and sends the token  |
-| `enacit4r-auth`         | Validates the token in the backend                     |
-| The GitHub App          | Reads the role of the user on the data repository      |
+A Keycloak `realm` is one set of users with its own sign-in page.
 
-The Keycloak `realm` `external` already has GitHub as an identity provider. The
+| Part                  | Job                                                   |
+| --------------------- | ----------------------------------------------------- |
+| `realm` `external`    | Signs in users on `https://enac-it-sso2.epfl.ch`      |
+| GitHub provider       | Lets a user sign in to Keycloak with a GitHub account |
+| `github_login` mapper | Puts the GitHub login of the user in the token        |
+| `keycloak-js`         | Signs in the user in the frontend and sends the token |
+| `enacit4r-auth`       | Validates the token in the backend                    |
+| The GitHub App        | Reads the role of the user on the data repository     |
+
+The `realm` `external` already has GitHub as an identity provider. The
 claim `preferred_username` is not always the GitHub login. Ask OPS to
 add an identity provider mapper to the GitHub provider. The mapper must
 copy the GitHub login into a token claim with the name `github_login`.
@@ -111,13 +113,13 @@ who do not sign in.
 `GitHubRepo.permission` calls
 `GET /repos/{owner}/{repo}/collaborators/{username}/permission` with
 the App from [GitHub App](github-app.md). The Metadata read permission
-of the App can be sufficient for this endpoint. Check this on your
-App: sign in, then open the admin page. If the response is 403 for a user
-with write access, look at the log of the backend.
+of the App can be sufficient for this endpoint. Test this on your
+App: sign in, then open the admin page.
 
-> Note: A user who is not a collaborator gets the role `none`. A
-> member of an organization team with write access gets the role of
-> the team.
+- If GitHub refuses the call, the backend answers 500 and writes the
+  error in its log.
+- If a user with write access gets 403, GitHub answered 404. For
+  example, the App is not installed on that repository.
 
 ## Limits
 
@@ -125,8 +127,8 @@ with write access, look at the log of the backend.
   a last name. A GitHub account can hide its e-mail address or have no
   name. Then `kc.get_user_info` can fail for that user. Ask OPS to make
   Keycloak ask for the missing values at the first sign-in.
-- If the `github_login` claim is missing, each reviewer gets 401. Read
-  a token on jwt.io and make sure that the claim is there.
+- If the `github_login` claim is missing, each reviewer gets 401. Decode a token
+  on your computer and make sure that the claim is there.
 
 ## Next step
 
