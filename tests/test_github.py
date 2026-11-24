@@ -221,3 +221,20 @@ def test_constructor_picks_auth_strategy():
 def test_constructor_rejects(repo_name, kwargs):
     with pytest.raises(ValueError):
         GitHubRepo(repo_name, **kwargs)
+
+
+async def test_permission_maps_404_to_none_and_reads_the_role(repo):
+    roles = {
+        "ada": {"permission": "write", "role_name": "maintain"},
+        "bob": {"permission": "read", "role_name": "custom-role"},
+    }
+
+    async def get_level(owner, name, username):
+        if username not in roles:
+            raise failed(404)
+        return ok(roles[username])
+
+    repo._gh.rest.repos.async_get_collaborator_permission_level = get_level
+    assert await repo.permission("nobody") == "none"
+    assert await repo.permission("ada") == "maintain"
+    assert await repo.permission("bob") == "read"

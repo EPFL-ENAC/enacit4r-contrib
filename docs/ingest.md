@@ -73,7 +73,7 @@ jobs:
           ref: ${{ github.event.pull_request.base.ref }}
           fetch-depth: 0
       - uses: astral-sh/setup-uv@v6
-      - uses: EPFL-ENAC/enacit4r-contrib/ingest@0.4.0
+      - uses: EPFL-ENAC/enacit4r-contrib/ingest@0.5.0
         with:
           pr-number: ${{ github.event.pull_request.number }}
           base: ${{ github.event.pull_request.base.ref }}

@@ -14,14 +14,17 @@ nav = [
     { "Validators" = "validators.md" },
     { "HTTP API" = "http-api.md" },
     { "GitHub App" = "github-app.md" },
+    { "Sign in with Keycloak" = "sign-in.md" },
     { "Sinks" = "sinks.md" },
     { "Drafts in storage" = "drafts.md" },
+    { "Adopt the draft pattern" = "adopt.md" },
     { "Ingest" = "ingest.md" },
     { "Withdraw data" = "withdraw.md" },
     { "Testing" = "testing.md" },
   ] },
   { "Background" = [
     { "Contribution pipelines in five projects" = "research/contribution-pipelines.md" },
+    { "Sign-in study" = "research/sign-in-keycloak.md" },
   ] },
 ]
 

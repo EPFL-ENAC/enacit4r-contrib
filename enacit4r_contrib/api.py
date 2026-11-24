@@ -11,11 +11,11 @@ import json
 import logging
 import time
 from collections import defaultdict, deque
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 from starlette.datastructures import UploadFile
 
 from enacit4r_contrib.bundle import BundleError, read_upload
@@ -25,8 +25,6 @@ from enacit4r_contrib.pipeline import Contributor, Pipeline, QueueFull
 log = logging.getLogger(__name__)
 
 CHUNK = 2**20
-CONTRIBUTOR_FIELDS = ("name", "email", "institution", "orcid", "note")
-OPTIONAL_FIELDS = ("orcid", "note")
 
 
 def default_client_key(request: Request) -> str:
@@ -41,6 +39,10 @@ def _detail(status: int, detail) -> JSONResponse:
     return JSONResponse({"detail": detail}, status_code=status)
 
 
+def _no_identity() -> None:
+    return None
+
+
 def contribution_router(
     pipeline: Pipeline,
     *,
@@ -52,10 +54,22 @@ def contribution_router(
     max_files: int = 500,
     max_file_bytes: int = 50 * 2**20,
     max_total_bytes: int = 200 * 2**20,
+    contributor: type[BaseModel] = Contributor,
+    public_state: Callable[[str], Awaitable[str | None]] | None = None,
+    ignore_case: bool = False,
+    unexpected: str = "Unexpected file: not part of the template",
+    identity: Callable | None = None,
 ) -> APIRouter:
     """POST /validate checks an upload; POST /contributions submits it.
 
     enabled=False: POST /contributions answers 503, /validate still works.
+    contributor: the model built from the form fields that it declares, or from
+    one JSON form field `contributor`. A sink can need the `Contributor` fields.
+    public_state: adds GET /contributions/{id}/state, which returns only the state.
+    ignore_case: `allow` and `skip` globs match in any case.
+    identity: a FastAPI dependency that returns the verified fields of a
+    signed-in contributor (for example "name" and "email"), or None. Its
+    values replace the same fields of the form.
     """
     router = APIRouter()
     max_attempts, window = rate_limit
@@ -94,6 +108,42 @@ def contribution_router(
             max_files=max_files,
             max_file_bytes=max_file_bytes,
             max_total_bytes=max_total_bytes,
+            ignore_case=ignore_case,
+            unexpected=unexpected,
+        )
+
+    def read_contributor(form, verified: dict | None) -> BaseModel:
+        """Raise ValidationError or ValueError when the fields are not valid."""
+        if isinstance(raw := form.get("contributor"), str):
+            values = json.loads(raw)
+            if not isinstance(values, dict):
+                raise ValueError("Field 'contributor' must hold a JSON object")
+        else:
+            values = {
+                k: v
+                for k in contributor.model_fields
+                if isinstance(v := form.get(k), str)
+            }
+        # A blank verified value (a GitHub account with no name) keeps the form value.
+        verified = {
+            k: v
+            for k, v in (verified or {}).items()
+            if v is not None and str(v).strip()
+        }
+        values = {**values, **verified}
+        # A blank optional input arrives as "": treat it as absent.
+        return contributor(
+            **{
+                k: v
+                for k, v in values.items()
+                if k in contributor.model_fields
+                and v is not None
+                and not (
+                    isinstance(v, str)
+                    and not v.strip()
+                    and not contributor.model_fields[k].is_required()
+                )
+            }
         )
 
     @router.post("/validate")
@@ -112,7 +162,9 @@ def contribution_router(
         return Report(issues).to_dict()
 
     @router.post("/contributions", status_code=201)
-    async def contribute(request: Request):
+    async def contribute(
+        request: Request, verified: dict | None = Depends(identity or _no_identity)
+    ):
         if not enabled:
             return _detail(503, "Contributions are not open yet")
         key = client_key(request)
@@ -124,17 +176,12 @@ def contribution_router(
             return _detail(429, "Too many contributions from you. Try again later.")
 
         async with request.form(max_files=max_files) as form:
-            # A blank optional input arrives as "": treat it as absent.
-            fields = {
-                k: v
-                for k in CONTRIBUTOR_FIELDS
-                if isinstance(v := form.get(k), str)
-                and (v.strip() or k not in OPTIONAL_FIELDS)
-            }
             try:
-                contributor = Contributor(**fields)
+                person = read_contributor(form, verified)
             except ValidationError as e:
                 return _detail(422, json.loads(e.json(include_url=False)))
+            except ValueError as e:  # json.JSONDecodeError is a ValueError
+                return _detail(422, str(e))
             try:
                 bundle, issues = await read_files(form)
             except BundleError as e:
@@ -148,7 +195,7 @@ def contribution_router(
             return _detail(429, "Too many contributions from you. Try again later.")
         seen.append(now)
         try:
-            report, receipt = await pipeline.submit(bundle, contributor, issues)
+            report, receipt = await pipeline.submit(bundle, person, issues)
         except QueueFull:
             return _detail(
                 429, "Too many contributions wait for review. Try again later."
@@ -161,5 +208,14 @@ def contribution_router(
         if receipt is None:
             return JSONResponse(report.to_dict(), status_code=422)
         return {**report.to_dict(), "id": receipt.id, "url": receipt.url}
+
+    if public_state is not None:
+
+        @router.get("/contributions/{id}/state")
+        async def contribution_state(id: str):
+            state = await public_state(id)
+            if state is None:
+                return _detail(404, "No such contribution")
+            return {"id": id, "state": state}
 
     return router

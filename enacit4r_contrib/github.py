@@ -7,7 +7,7 @@ import logging
 from githubkit import AppInstallationAuthStrategy, GitHub, TokenAuthStrategy
 from githubkit.exception import GitHubException, RequestFailed
 
-from enacit4r_contrib.repo import PullRef
+from enacit4r_contrib.repo import ROLES, PullRef
 
 log = logging.getLogger(__name__)
 
@@ -142,6 +142,22 @@ class GitHubRepo:
             if len(pulls) < PAGE_SIZE:
                 return heads
             page += 1
+
+    async def permission(self, login: str) -> str:
+        try:
+            resp = await self._gh.rest.repos.async_get_collaborator_permission_level(
+                self.owner, self.name, login
+            )
+        except RequestFailed as e:
+            if e.response.status_code == 404:
+                return "none"
+            raise
+        data = resp.json()
+        # `permission` holds only the legacy roles (maintain shows as write,
+        # triage as read): `role_name` has the exact role, or a custom name.
+        if data.get("role_name") in ROLES:
+            return data["role_name"]
+        return data["permission"]
 
     async def delete_branch(self, branch: str) -> None:
         # Runs during cleanup: raising here would hide the error that caused it.

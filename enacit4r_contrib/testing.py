@@ -6,7 +6,8 @@
     assert repo.pulls[0]["title"] == "Data contribution: Ada (EPFL)"
 
 `files` is the default branch. Each method records what it did in `branches`,
-`commits`, `pulls`, `reviewers` or `deleted`. Set `fail_on` to a method name
+`commits`, `pulls`, `reviewers` or `deleted`. `permissions` maps a GitHub
+login to its role on the repository (absent: "none"). Set `fail_on` to a method name
 to make that method raise RuntimeError.
 """
 
@@ -24,6 +25,7 @@ class FakeRepo:
     pulls: list[dict] = field(default_factory=list)
     reviewers: dict[int, list[str]] = field(default_factory=dict)
     deleted: list[str] = field(default_factory=list)
+    permissions: dict[str, str] = field(default_factory=dict)
     fail_on: str | None = None
 
     def _maybe_fail(self, method: str) -> None:
@@ -78,3 +80,7 @@ class FakeRepo:
         self._maybe_fail("delete_branch")
         self.branches.pop(branch, None)
         self.deleted.append(branch)
+
+    async def permission(self, login: str) -> str:
+        self._maybe_fail("permission")
+        return self.permissions.get(login, "none")

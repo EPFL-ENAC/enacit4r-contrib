@@ -12,6 +12,7 @@ client.
 | --------------------- | ------------------------------------------- |
 | `POST /validate`      | Check the files. Nothing is stored.         |
 | `POST /contributions` | Check the files again, then submit them.    |
+| `GET /contributions/{id}/state` | The state of a draft. Only with `public_state`. |
 
 The two endpoints take `multipart/form-data`. Each file is one part in
 the field `files`. The file name of the part is the relative path of
@@ -28,7 +29,16 @@ can also be a `.zip` or a `.tar.gz` archive. The intake expands it.
 | `orcid`       | Optional, for example `0000-0002-1825-0097` |
 | `note`        | Optional, up to 2000 characters            |
 
-An empty optional field is the same as no field.
+An empty optional field is the same as no field. With
+`contributor=Model`, the router reads the fields of your model instead.
+
+The browser can also send one field `contributor` with a JSON object,
+for example `{"name": "Ada", "email": "ada@example.org"}`. Then the
+router ignores the other contributor fields. JSON that is not valid
+answers 422.
+
+The state route answers 200 with `{"id": ..., "state": ...}`, or 404.
+It returns no contributor data.
 
 ## Status codes
 
@@ -50,8 +60,7 @@ The body of an answer has one of two shapes. A report is
 | `POST /contributions` | 503    | `{"detail": str}`            | The router has `enabled=False`             |
 
 In a 422 answer, `issues` tells you that the data has errors. A
-`detail` list tells you that a contributor field has an error. Each
-item of the list has `loc` and `msg`, in the FastAPI format.
+`detail` tells you that a contributor field has an error.
 
 ## Limits
 
@@ -63,8 +72,7 @@ The router protects the review queue with two limits. Both give 429.
   refuses new ones. Change it with `Pipeline(..., max_open=25)`.
 
 The router identifies a client by the last entry of the
-`X-Forwarded-For` header. The ingress adds this entry. If the header is
-not present, the router uses the address of the peer. To change this,
+`X-Forwarded-For` header, else by the peer address. To change this,
 give a function to `client_key`.
 
 > Note: The rate limit is kept in the memory of the process. If you
@@ -77,8 +85,7 @@ limit on the request body at the ingress too.
 
 ## A browser client
 
-Use relative paths. Then the same code works behind the ingress in
-each environment. This example assumes that the router is under
+Use relative paths. This example assumes that the router is under
 `/api`.
 
 ```javascript
