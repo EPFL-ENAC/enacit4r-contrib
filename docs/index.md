@@ -79,6 +79,7 @@ each project.
 - [Sinks](sinks.md): what `GitHubPRSink` writes, and how to write a
   different sink.
 - [Drafts in storage](drafts.md): drafts, an admin review, and publication.
+- [Adopt the draft pattern](adopt.md): move your own upload code to the library.
 - [Ingest](ingest.md): fold a merged contribution into your data.
 - [Withdraw data](withdraw.md): take accepted data out of your dataset.
 - [Testing](testing.md): test your integration without GitHub.

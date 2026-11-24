@@ -16,6 +16,7 @@ nav = [
     { "GitHub App" = "github-app.md" },
     { "Sinks" = "sinks.md" },
     { "Drafts in storage" = "drafts.md" },
+    { "Adopt the draft pattern" = "adopt.md" },
     { "Ingest" = "ingest.md" },
     { "Withdraw data" = "withdraw.md" },
     { "Testing" = "testing.md" },

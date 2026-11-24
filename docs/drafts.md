@@ -169,3 +169,4 @@ eesd-mmsdb uses `FolderDraftStore` and a manual git step.
 
 Read [Testing](testing.md) to test your routes. For the pull request
 pattern, read [Sinks](sinks.md).
+To move your own upload code to the library, read [Adopt the draft pattern](adopt.md).
