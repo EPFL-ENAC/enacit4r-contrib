@@ -17,7 +17,7 @@ The library is a git dependency, pinned by tag:
 dependencies = ["enacit4r-contrib[github]"]
 
 [tool.uv.sources]
-enacit4r-contrib = { git = "https://github.com/EPFL-ENAC/enacit4r-contrib", tag = "0.4.0" }
+enacit4r-contrib = { git = "https://github.com/EPFL-ENAC/enacit4r-contrib", tag = "0.5.0" }
 ```
 
 ## Use it in a FastAPI backend

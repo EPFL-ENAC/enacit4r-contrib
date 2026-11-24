@@ -2,18 +2,16 @@
 
 In the draft pattern, each contribution waits as a draft in your
 storage. An admin accepts it, rejects it, or publishes it in your app.
-The module `enacit4r_contrib.drafts` gives this pattern. The intake,
-the validator and `contribution_router` stay the same as for pull
-requests. Only the sink and the decision step change.
+The module `enacit4r_contrib.drafts` gives this pattern. Only the sink
+and the decision step differ from pull requests.
 
 ## When to use drafts
 
 Use drafts instead of pull requests in these conditions:
 
-- A database or a search index holds the published copy, not a git
-  repository.
-- The reviewers work in an admin page of your app, not on GitHub.
-- Your project has no GitHub App, or the data must not go to GitHub.
+- A database or a search index holds the published copy.
+- The reviewers work in an admin page of your app.
+- The data must not go to GitHub.
 
 ## The states
 
@@ -50,16 +48,38 @@ pipeline compares this number with `max_open`.
 
 ## Wire it
 
+This project has its own contributor model and an upload e-mail.
+
 ```python
 from pathlib import Path
 
 from fastapi import Header, HTTPException
+from pydantic import BaseModel
 
 from enacit4r_contrib import Pipeline, contribution_router
-from enacit4r_contrib.drafts import DraftSink, FolderDraftStore, Review, review_router
+from enacit4r_contrib.drafts import (
+    DraftSink,
+    FolderDraftStore,
+    Review,
+    review_router,
+    secret_id,
+)
 
-store = FolderDraftStore(Path("/data/drafts"))
-pipeline = Pipeline(validate, DraftSink(store))
+
+class Person(BaseModel):
+    name: str
+    email: str
+    institution: str | None = None
+    method: str
+
+
+async def mail_admins(draft):
+    await send_mail("New contribution", draft.id)  # your mailer
+
+
+store = FolderDraftStore(Path("/data/drafts"), contributor=Person)
+sink = DraftSink(store, make_id=secret_id, on_submit=mail_admins)
+pipeline = Pipeline(validate, sink)
 
 
 def reviewer(x_user: str | None = Header(default=None)) -> str:
@@ -73,7 +93,11 @@ async def on_publish(draft, files):
     await load_into_database(draft.id, files)  # your project's loader
 
 
-app.include_router(contribution_router(pipeline, allow=["*.csv"]))
+app.include_router(
+    contribution_router(
+        pipeline, allow=["*.csv"], contributor=Person, public_state=sink.state
+    )
+)
 app.include_router(
     review_router(Review(store, on_publish=on_publish), reviewer=reviewer),
     prefix="/admin",
@@ -81,7 +105,7 @@ app.include_router(
 ```
 
 The `reviewer` dependency returns the name of the reviewer, or raises
-401 or 403. The router uses it on each endpoint.
+401 or 403.
 
 | Endpoint                            | Result                              |
 | ----------------------------------- | ----------------------------------- |
@@ -108,55 +132,38 @@ To take published data back, the admin moves the draft to `withdrawn`,
 with a comment. `Review` calls `on_withdraw(draft)` first. If it fails,
 the draft stays `published`. Read [Withdraw data](withdraw.md).
 
+## Fit your project
+
+- Contributor model: give the same model to the store and to the
+  router. The router reads the fields of the model. `GitHubPRSink`
+  needs the fields of `Contributor`.
+- JSON contributor: a form field `contributor` can hold a JSON object.
+  Then the router ignores the other contributor fields.
+- Upload e-mail: `on_submit` runs after the save. If it fails, the
+  library logs the error.
+- Public state: `public_state=sink.state` adds
+  `GET /contributions/{id}/state`. It returns only the state. Use
+  `make_id=secret_id`: then only the contributor knows the ID.
+- Case: with `ignore_case=True`, `*.ply` matches `X.PLY`.
+- Prefix: mount `contribution_router` without a prefix, else the route
+  becomes `/contributions/contributions`.
+- Unknown files: the router refuses an upload with a file that `allow`
+  does not match. Show the issue list in the form.
+
 ## Store drafts in S3
 
 To use S3 or a database, write a class with the four methods of
-`DraftStore`. The S3 calls below are placeholders for the calls of
-your S3 client.
-
-```python
-import json
-
-from enacit4r_contrib.drafts import Draft
-
-
-class S3DraftStore:
-    def __init__(self, s3):
-        self.s3 = s3  # placeholder client: put, get, list_keys
-
-    async def save(self, draft, bundle):
-        for path, data in (bundle or {}).items():
-            await self.s3.put(f"draft/{draft.id}/files/{path}", data)
-        body = json.dumps(draft.to_dict()).encode()
-        await self.s3.put(f"draft/{draft.id}/draft.json", body)
-
-    async def load(self, id):
-        data = await self.s3.get(f"draft/{id}/draft.json")  # KeyError if missing
-        return Draft.from_dict(json.loads(data))
-
-    async def files(self, id):
-        draft = await self.load(id)
-        return {p: await self.s3.get(f"draft/{id}/files/{p}") for p in draft.files}
-
-    async def list(self, state=None):
-        keys = await self.s3.list_keys("draft/", suffix="/draft.json")
-        drafts = [Draft.from_dict(json.loads(await self.s3.get(k))) for k in keys]
-        return [d for d in drafts if state is None or d.state == state]
-```
-
-`load` must raise `KeyError` for a missing draft. Refuse an
-ID that is not a single safe path segment.
+`DraftStore`, as `FolderDraftStore` does. To read a draft, call
+`Draft.from_dict(data, contributor)` with your contributor model.
+`load` must raise `KeyError` for a missing draft. Refuse an ID that is
+not a single safe path segment.
 
 ## The three projects
 
-| Project          | Store                            | Review                     | `on_publish`                    |
-| ---------------- | -------------------------------- | -------------------------- | ------------------------------- |
-| hobel-iaqdb      | An S3 store under `draft/<id>/`  | An admin page              | Copy to `pub/`, load Postgres   |
-| ALICE-ETHZ-AREMA | A store on its Postgres rows     | Keycloak roles as reviewer | Index into Elasticsearch        |
-| eesd-mmsdb       | `FolderDraftStore`               | An admin password          | The manual git and LFS step     |
-
-ALICE has more states. It can keep its own state machine and use only
-the sink. Each project gets a decision history.
+hobel-iaqdb keeps its drafts in S3 and loads Postgres at publication.
+ALICE-ETHZ-AREMA keeps them in its Postgres rows, with Keycloak roles
+as reviewer. It has more states, so it can use only the sink.
+eesd-mmsdb uses `FolderDraftStore` and a manual git step.
 
 ## Next step
 
