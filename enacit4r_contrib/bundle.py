@@ -38,6 +38,7 @@ def read_upload(
     max_file_bytes: int = 50 * 2**20,
     max_total_bytes: int = 200 * 2**20,
     ignore_case: bool = False,
+    unexpected: str = "Unexpected file: not part of the template",
 ) -> tuple[Bundle, list[Issue]]:
     """ignore_case=True: `allow` and `skip` globs match in any case (`*.ply`
     matches `X.PLY`). The bundle keeps the original case of each path."""
@@ -86,7 +87,7 @@ def read_upload(
                 )
             )
         elif not matches(path, allow):
-            issues.append(Issue("Unexpected file: not part of the template", file=path))
+            issues.append(Issue(unexpected, file=path))
         else:
             bundle[path] = data
         seen.add(path)

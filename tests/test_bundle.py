@@ -208,3 +208,10 @@ def test_ignore_case_true_applies_to_skip():
         ignore_case=True,
     )
     assert bundle == {"a.ply": b"p"} and issues[0].severity == "warning"
+
+
+def test_unexpected_message_can_be_set():
+    _, issues = read_upload(
+        [("a.txt", b"x"), ("b.ply", b"y")], allow=["*.ply"], unexpected="Not a 3D model"
+    )
+    assert [(i.file, i.message) for i in issues] == [("a.txt", "Not a 3D model")]

@@ -16,6 +16,8 @@ work, with tests and one error format.
 - `review_router`: the admin endpoints. Your project gives the login.
 - Your own contributor model, a JSON `contributor` field, the upload
   hook `on_submit`, a public state route, `secret_id` and `ignore_case`.
+- Your own text for a refused file (`unexpected`), for example "Not a 3D
+  model". The default text speaks of a template.
 
 ## Procedure
 

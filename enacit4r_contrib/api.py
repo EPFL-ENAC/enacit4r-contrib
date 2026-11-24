@@ -57,6 +57,7 @@ def contribution_router(
     contributor: type[BaseModel] = Contributor,
     public_state: Callable[[str], Awaitable[str | None]] | None = None,
     ignore_case: bool = False,
+    unexpected: str = "Unexpected file: not part of the template",
     identity: Callable | None = None,
 ) -> APIRouter:
     """POST /validate checks an upload; POST /contributions submits it.
@@ -108,6 +109,7 @@ def contribution_router(
             max_file_bytes=max_file_bytes,
             max_total_bytes=max_total_bytes,
             ignore_case=ignore_case,
+            unexpected=unexpected,
         )
 
     def read_contributor(form, verified: dict | None) -> BaseModel:
