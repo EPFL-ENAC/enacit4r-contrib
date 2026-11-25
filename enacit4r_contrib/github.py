@@ -2,6 +2,7 @@
 
 import asyncio
 import base64
+import hashlib
 import logging
 
 from githubkit import AppInstallationAuthStrategy, GitHub, TokenAuthStrategy
@@ -15,6 +16,11 @@ MAX_BLOB_UPLOADS = 8
 PAGE_SIZE = 100
 
 
+def blob_sha(data: bytes) -> str:
+    """The git blob id of `data`, the same as `git hash-object`."""
+    return hashlib.sha1(b"blob %d\0" % len(data) + data).hexdigest()
+
+
 class GitHubRepo:
     """Authenticates as a GitHub App installation, or with a token."""
 
@@ -26,6 +32,7 @@ class GitHubRepo:
         private_key: str | None = None,
         installation_id: int | None = None,
         token: str | None = None,
+        github: GitHub | None = None,
     ) -> None:
         owner, sep, name = repo.partition("/")
         if not sep or not owner or not name or "/" in name:
@@ -33,6 +40,11 @@ class GitHubRepo:
         self.owner, self.name = owner, name
 
         app = (app_id, private_key, installation_id)
+        if github is not None:
+            if token is not None or any(v is not None for v in app):
+                raise ValueError("give github or the credentials, not both")
+            self._gh = github
+            return
         if all(v is not None for v in app):
             # Env vars often carry the PEM on one line with literal "\n".
             auth = AppInstallationAuthStrategy(
@@ -115,6 +127,61 @@ class GitHubRepo:
             self.owner, self.name, ref=f"refs/heads/{branch}", sha=sha
         )
         return sha
+
+    async def commit_tree(
+        self,
+        parent: str,
+        files: dict[str, bytes],
+        message: str,
+        *,
+        deletions: list[str] = (),
+        author: tuple[str, str] | None = None,
+        known: dict[str, str] | None = None,
+    ) -> str:
+        """Make one commit on top of the commit `parent` and return its sha.
+
+        Move no ref. Skip each file whose blob sha equals `known[path]`.
+        Return `parent` when there is nothing to write."""
+        git = self._gh.rest.git
+        known = known or {}
+        paths = [p for p, data in files.items() if known.get(p) != blob_sha(data)]
+        slots = asyncio.Semaphore(MAX_BLOB_UPLOADS)
+
+        async def upload(data: bytes) -> str:
+            try:
+                kwargs = {"content": data.decode(), "encoding": "utf-8"}
+            except UnicodeDecodeError:
+                kwargs = {
+                    "content": base64.b64encode(data).decode(),
+                    "encoding": "base64",
+                }
+            async with slots:
+                blob = await git.async_create_blob(self.owner, self.name, **kwargs)
+            return blob.parsed_data.sha
+
+        shas = await asyncio.gather(*(upload(files[p]) for p in paths))
+        entries = [
+            {"path": p, "mode": "100644", "type": "blob", "sha": s}
+            for p, s in zip(paths, shas, strict=True)
+        ] + [
+            {"path": p, "mode": "100644", "type": "blob", "sha": None}
+            for p in deletions
+        ]
+        if not entries:
+            return parent
+        tree = await git.async_create_tree(
+            self.owner, self.name, base_tree=parent, tree=entries
+        )
+        extra = {"author": {"name": author[0], "email": author[1]}} if author else {}
+        commit = await git.async_create_commit(
+            self.owner,
+            self.name,
+            message=message,
+            tree=tree.parsed_data.sha,
+            parents=[parent],
+            **extra,
+        )
+        return commit.parsed_data.sha
 
     async def open_pull(self, branch: str, base: str, title: str, body: str) -> PullRef:
         resp = await self._gh.rest.pulls.async_create(

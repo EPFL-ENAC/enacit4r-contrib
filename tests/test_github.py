@@ -4,15 +4,21 @@ from types import SimpleNamespace
 
 import httpx
 import pytest
-from githubkit import AppInstallationAuthStrategy, Response, TokenAuthStrategy
+from githubkit import (
+    AppInstallationAuthStrategy,
+    GitHub,
+    Response,
+    TokenAuthStrategy,
+)
 from githubkit.exception import RequestFailed
 
-from enacit4r_contrib.github import GitHubRepo
+from enacit4r_contrib.github import GitHubRepo, blob_sha
 from enacit4r_contrib.repo import PullRef
 
 
 def ok(data):
-    return SimpleNamespace(json=lambda: data)
+    parsed = SimpleNamespace(**data) if isinstance(data, dict) else data
+    return SimpleNamespace(json=lambda: data, parsed_data=parsed)
 
 
 def failed(status):
@@ -238,3 +244,57 @@ async def test_permission_maps_404_to_none_and_reads_the_role(repo):
     assert await repo.permission("nobody") == "none"
     assert await repo.permission("ada") == "maintain"
     assert await repo.permission("bob") == "read"
+
+
+def test_blob_sha_matches_git_hash_object():
+    # printf 'one\n' | git hash-object --stdin
+    assert blob_sha(b"one\n") == "5626abf0f72e58d7a153368ba57db4c673c0e171"
+
+
+async def test_commit_tree_uploads_every_file_without_known(repo):
+    png = b"\x89PNG\x00\xff"
+    sha = await repo.commit_tree("p", {"a.csv": b"id\n1\n", "img.png": png}, "m")
+    git = repo._gh.rest.git
+    assert sha == "new-commit"
+    assert git.tree["base_tree"] == "p"
+    assert [e["path"] for e in git.tree["tree"]] == ["a.csv", "img.png"]
+    blobs = {e["path"]: git.blobs[e["sha"]] for e in git.tree["tree"]}
+    assert blobs["a.csv"] == ("id\n1\n", "utf-8")
+    assert blobs["img.png"] == (base64.b64encode(png).decode(), "base64")
+    assert git.commit["parents"] == ["p"]
+    assert git.commit["tree"] == "new-tree"
+    assert "author" not in git.commit
+    assert not hasattr(git, "ref")
+
+
+async def test_commit_tree_skips_known_unchanged_and_appends_deletions(repo):
+    files = {"same.txt": b"one\n", "new.txt": b"two\n"}
+    known = {"same.txt": blob_sha(b"one\n"), "new.txt": blob_sha(b"old\n")}
+    await repo.commit_tree(
+        "p", files, "m", known=known, deletions=["gone.txt"], author=("A", "a@x")
+    )
+    git = repo._gh.rest.git
+    assert len(git.blobs) == 1
+    assert [(e["path"], e["sha"]) for e in git.tree["tree"]] == [
+        ("new.txt", "blob0"),
+        ("gone.txt", None),
+    ]
+    assert git.commit["author"] == {"name": "A", "email": "a@x"}
+
+
+async def test_commit_tree_with_nothing_to_write_returns_parent(repo):
+    known = {"a.txt": blob_sha(b"x")}
+    assert await repo.commit_tree("p", {"a.txt": b"x"}, "m", known=known) == "p"
+    git = repo._gh.rest.git
+    assert git.blobs == {}
+    assert not hasattr(git, "tree")
+    assert not hasattr(git, "commit")
+
+
+def test_constructor_uses_injected_github_and_rejects_credentials_with_it():
+    gh = GitHub(TokenAuthStrategy("t"))
+    assert GitHubRepo("o/r", github=gh)._gh is gh
+    with pytest.raises(ValueError):
+        GitHubRepo("o/r", github=gh, token="t")
+    with pytest.raises(ValueError):
+        GitHubRepo("o/r", github=gh, app_id="1")
