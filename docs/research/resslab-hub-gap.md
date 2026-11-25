@@ -55,18 +55,54 @@ The intake stays in resslab-hub. Its extraction writes to a folder and
 its validators read that folder. `read_upload` reads into memory, and a
 swap brings no gain.
 
-## Roadmap after 0.6.0
+## Decisions for resslab-hub before the next steps
 
-1. Edit a contribution: add a commit to the branch of an open pull
-   request. If the branch moved, refuse the update.
-2. A table merge: add the rows of a contribution to the main CSV in the
-   pull request, as an option of `GitHubPRSink`.
-3. Duplicate identifiers: a validator helper that reads the identifiers of
-   the main CSV on the base branch.
-4. Optional trailers: leave out an empty field, and accept extra
-   trailers from the project.
+The maintainers of resslab-hub must make these decisions. Each one
+changes what the library builds. The table gives a recommendation for
+each decision.
+
+| Decision                                 | Options                                                                  | Recommendation                                                      |
+| ---------------------------------------- | ------------------------------------------------------------------------ | ------------------------------------------------------------------- |
+| D1. Where the rows go in the pull request | A: merged into the main CSV (today). B: `submissions/<id>/`, then ingest | A. The data repository, its checks and the curation page stay as they are |
+| D2. Who is the commit author             | A: the contributor (today). B: the App, with the contributor in trailers | A. The library has `author=` for this                               |
+| D3. Sign-in                              | A: the own sign-in of resslab-hub (today). B: Keycloak with GitHub       | A for this roadmap. Decide B in a separate study                    |
+| D4. Intake and validators                | A: a folder (today). B: the in-memory `Bundle` of the library            | A. Only the GitHub layer moves to the library                       |
+| D5. Release of the library               | A: a git tag (today). B: PyPI                                            | A. The backend image installs git in its build stage                |
+
+If resslab-hub chooses B for D1, the data repository changes too: its
+validation workflow, its `upload.yml` and the curation page read the
+main CSV in the pull request today. That is a migration of the data
+repository, not a library task.
+
+## Roadmap
+
+Each step is one library version and one pull request in resslab-hub.
+After each step, the resslab-hub tests of the GitHub client, the
+contributions and the curation pass with no edit.
+
+1. Done in draft: the commit goes through `commit_tree`, with a shared
+   client and the contributor as author (library 0.6.0).
+2. Library 0.6.0, then resslab-hub: the pull request, the review
+   requests and the branch cleanup go through `GitHubRepo`. resslab-hub
+   maps the exact role of `permission` to its base levels.
+3. Library 0.7.0: optional trailers. The library leaves out an empty
+   field and accepts extra trailers from the project. resslab-hub then
+   uses the library to write and read its trailers.
+4. Library 0.7.0: edit a contribution. The library adds a commit to an
+   open branch. If the branch moved, the library refuses the update.
+   resslab-hub then answers 409, as today.
+5. Library 0.8.0, only if D1 is A: a table merge option of
+   `GitHubPRSink` and a helper for duplicate identifiers.
+6. Library 0.8.0: a read API for open contributions. It gives each pull
+   request with the provenance from its trailers. The curation queue
+   of resslab-hub then reads through it.
+
+These parts stay in resslab-hub after step 6: the verification pull
+requests, the classification of the curation queue, the nine data
+types and their validators, the sign-in, and the load into Postgres.
+The verification pull requests use `commit_tree` and `open_pull` of the
+library.
 
 ## Next step
 
-Read the pull request of version 0.6.0. Then read the draft pull
-request in resslab-hub that calls `commit_tree`.
+Decide D1 to D5 with the maintainers of resslab-hub. Then start step 2.
