@@ -8,7 +8,16 @@ from collections.abc import Sequence
 from githubkit import AppInstallationAuthStrategy, GitHub, TokenAuthStrategy
 from githubkit.exception import GitHubException, RequestFailed
 
-from enacit4r_contrib.repo import ROLES, BranchMoved, PullFile, PullRef, blob_sha
+from enacit4r_contrib.repo import (
+    ROLES,
+    BranchMoved,
+    CommentInfo,
+    CommitInfo,
+    PullFile,
+    PullInfo,
+    PullRef,
+    blob_sha,
+)
 
 log = logging.getLogger(__name__)
 
@@ -18,6 +27,28 @@ PAGE_SIZE = 100
 
 __all__ = ["GitHubRepo", "blob_sha"]
 MAX_PULL_FILE_PAGES = 30  # GitHub lists at most 3000 files.
+MAX_PULL_COMMIT_PAGES = 3  # GitHub lists at most 250 commits.
+MAX_COMMENT_PAGES = 10
+
+
+def _pull_info(p) -> PullInfo:
+    user, head_repo = p.user, p.head.repo
+    return PullInfo(
+        number=p.number,
+        url=p.html_url,
+        title=p.title,
+        body=p.body or "",
+        state=p.state,
+        draft=bool(p.draft),
+        author=user.login if user else "",
+        author_type=user.type if user else "",
+        head_ref=p.head.ref,
+        head_sha=p.head.sha,
+        head_repo=head_repo.full_name if head_repo else "",
+        base_ref=p.base.ref,
+        created_at=str(p.created_at),
+        updated_at=str(p.updated_at),
+    )
 
 
 class GitHubRepo:
@@ -254,6 +285,97 @@ class GitHubRepo:
             if len(pulls) < PAGE_SIZE:
                 return heads
             page += 1
+
+    async def open_pulls(
+        self, base: str | None = None, *, limit: int = 100
+    ) -> list[PullInfo]:
+        """The open pull requests, newest first, at most `limit`."""
+        per_page = min(limit, PAGE_SIZE)
+        extra = {"base": base} if base else {}
+        out: list[PullInfo] = []
+        page = 1
+        while len(out) < limit:
+            resp = await self._gh.rest.pulls.async_list(
+                self.owner,
+                self.name,
+                state="open",
+                sort="created",
+                direction="desc",
+                per_page=per_page,
+                page=page,
+                **extra,
+            )
+            items = resp.parsed_data
+            out += [_pull_info(p) for p in items]
+            if len(items) < per_page:
+                break
+            page += 1
+        return out[:limit]
+
+    async def get_pull(self, number: int) -> PullInfo:
+        resp = await self._gh.rest.pulls.async_get(self.owner, self.name, number)
+        return _pull_info(resp.parsed_data)
+
+    async def pull_commits(self, number: int) -> list[CommitInfo]:
+        out: list[CommitInfo] = []
+        for page in range(1, MAX_PULL_COMMIT_PAGES + 1):
+            resp = await self._gh.rest.pulls.async_list_commits(
+                self.owner, self.name, number, per_page=PAGE_SIZE, page=page
+            )
+            items = resp.parsed_data
+            for item in items:
+                author = item.commit.author
+                out.append(
+                    CommitInfo(
+                        sha=item.sha,
+                        message=item.commit.message or "",
+                        author_name=getattr(author, "name", "") or "",
+                        author_email=getattr(author, "email", "") or "",
+                        author_date=str(getattr(author, "date", "") or ""),
+                    )
+                )
+            if len(items) < PAGE_SIZE:
+                break
+        return out
+
+    async def pull_comments(self, number: int) -> list[CommentInfo]:
+        out: list[CommentInfo] = []
+        for page in range(1, MAX_COMMENT_PAGES + 1):
+            resp = await self._gh.rest.issues.async_list_comments(
+                self.owner, self.name, number, per_page=PAGE_SIZE, page=page
+            )
+            items = resp.parsed_data
+            out += [
+                CommentInfo(
+                    id=c.id,
+                    author=c.user.login if c.user else "",
+                    author_type=c.user.type if c.user else "",
+                    body=c.body if isinstance(c.body, str) else "",
+                    url=c.html_url,
+                    created_at=str(c.created_at),
+                    updated_at=str(c.updated_at),
+                )
+                for c in items
+            ]
+            if len(items) < PAGE_SIZE:
+                break
+        return out
+
+    async def list_dir(self, path: str, ref: str | None = None) -> list[str]:
+        """The names of the files (not folders) at `path`."""
+        kwargs = {"ref": ref} if ref else {}
+        try:
+            resp = await self._gh.rest.repos.async_get_content(
+                self.owner, self.name, path, **kwargs
+            )
+        except RequestFailed as e:
+            if e.response.status_code == 404:
+                return []
+            raise
+        items = resp.parsed_data
+        if not isinstance(items, list):
+            return []
+        return [i.name for i in items if i.type == "file"]
 
     async def permission(self, login: str) -> str:
         try:

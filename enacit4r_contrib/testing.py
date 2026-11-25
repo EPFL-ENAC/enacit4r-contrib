@@ -6,7 +6,8 @@
     assert repo.pulls[0]["title"] == "Data contribution: Ada (EPFL)"
 
 `files` is the default branch. Each method records what it did in `branches`,
-`commits`, `pulls`, `reviewers` or `deleted`. `heads` maps a branch to its last
+`commits`, `pulls`, `reviewers` or `deleted`. `comments` maps a pull request
+number to its comments. `heads` maps a branch to its last
 commit sha. `permissions` maps a GitHub
 login to its role on the repository (absent: "none"). Set `fail_on` to a method name
 to make that method raise RuntimeError.
@@ -16,7 +17,15 @@ import secrets
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 
-from enacit4r_contrib.repo import BranchMoved, PullFile, PullRef, blob_sha
+from enacit4r_contrib.repo import (
+    BranchMoved,
+    CommentInfo,
+    CommitInfo,
+    PullFile,
+    PullInfo,
+    PullRef,
+    blob_sha,
+)
 
 
 @dataclass
@@ -29,6 +38,7 @@ class FakeRepo:
     deleted: list[str] = field(default_factory=list)
     permissions: dict[str, str] = field(default_factory=dict)
     heads: dict[str, str] = field(default_factory=dict)
+    comments: dict[int, list[CommentInfo]] = field(default_factory=dict)
     fail_on: str | None = None
 
     def _maybe_fail(self, method: str) -> None:
@@ -143,3 +153,62 @@ class FakeRepo:
     async def permission(self, login: str) -> str:
         self._maybe_fail("permission")
         return self.permissions.get(login, "none")
+
+    def _pull_info(self, p: dict) -> PullInfo:
+        return PullInfo(
+            number=p["number"],
+            url=p["url"],
+            title=p["title"],
+            body=p["body"],
+            state="open" if p.get("open") else "closed",
+            draft=False,
+            author="",
+            author_type="",
+            head_ref=p["branch"],
+            head_sha=self.heads.get(p["branch"], ""),
+            head_repo="",
+            base_ref=p["base"],
+            created_at="",
+            updated_at="",
+        )
+
+    async def open_pulls(
+        self, base: str | None = None, *, limit: int = 100
+    ) -> list[PullInfo]:
+        self._maybe_fail("open_pulls")
+        pulls = [
+            p
+            for p in reversed(self.pulls)
+            if p.get("open") and (not base or p["base"] == base)
+        ]
+        return [self._pull_info(p) for p in pulls[:limit]]
+
+    async def get_pull(self, number: int) -> PullInfo:
+        self._maybe_fail("get_pull")
+        return self._pull_info(self.pulls[number - 1])
+
+    async def pull_commits(self, number: int) -> list[CommitInfo]:
+        self._maybe_fail("pull_commits")
+        branch = self.pulls[number - 1]["branch"]
+        out = []
+        for c in self.commits:
+            if c["branch"] != branch:
+                continue
+            name, email = c.get("author") or ("", "")
+            sha = c.get("sha") or blob_sha(f"{branch}\0{len(out)}".encode())
+            out.append(CommitInfo(sha, c["message"], name, email, ""))
+        return out
+
+    async def pull_comments(self, number: int) -> list[CommentInfo]:
+        self._maybe_fail("pull_comments")
+        return list(self.comments.get(number, []))
+
+    async def list_dir(self, path: str, ref: str | None = None) -> list[str]:
+        self._maybe_fail("list_dir")
+        tree = self.branches.get(ref, self.files) if ref else self.files
+        prefix = path.strip("/") + "/" if path.strip("/") else ""
+        return sorted(
+            p[len(prefix) :]
+            for p in tree
+            if p.startswith(prefix) and "/" not in p[len(prefix) :]
+        )

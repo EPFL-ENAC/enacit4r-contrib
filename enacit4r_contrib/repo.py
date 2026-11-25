@@ -36,7 +36,65 @@ class PullRef:
     url: str
 
 
+@dataclass(frozen=True)
+class PullInfo:
+    number: int
+    url: str
+    title: str
+    body: str
+    state: str
+    draft: bool
+    author: str
+    author_type: str
+    head_ref: str
+    head_sha: str
+    head_repo: str
+    base_ref: str
+    created_at: str
+    updated_at: str
+
+
+@dataclass(frozen=True)
+class CommitInfo:
+    sha: str
+    message: str
+    author_name: str
+    author_email: str
+    author_date: str
+
+
+@dataclass(frozen=True)
+class CommentInfo:
+    id: int
+    author: str
+    author_type: str
+    body: str
+    url: str
+    created_at: str
+    updated_at: str
+
+
+@dataclass(frozen=True)
+class Contribution:
+    """An open contribution pull request and who submitted it."""
+
+    pull: PullInfo
+    trailers: dict[str, list[str]]
+    submitter_name: str
+    submitter_email: str
+
+
 class Repo(Protocol):
+    """The write part is what a submission needs.
+
+    The reads part is optional. A curation page uses it:
+    `open_pulls(base=None, *, limit=100) -> list[PullInfo]`,
+    `get_pull(number) -> PullInfo`,
+    `pull_commits(number) -> list[CommitInfo]`,
+    `pull_comments(number) -> list[CommentInfo]` and
+    `list_dir(path, ref=None) -> list[str]` (the file names at `path`).
+    `contributions.open_contributions` needs `open_pulls` and `pull_commits`."""
+
     async def get_file(self, path: str, ref: str | None = None) -> bytes:
         """The file's bytes at `ref` (default: the default branch)."""
 

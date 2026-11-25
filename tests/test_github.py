@@ -370,3 +370,146 @@ async def test_request_reviewers_sends_a_data_body(repo):
     repo._gh.rest.pulls.async_request_reviewers = request
     await repo.request_reviewers(7, ["alice", "bob"])
     assert sent == [{"data": {"reviewers": ["alice", "bob"]}}]
+
+
+def ns(**kw):
+    return SimpleNamespace(**kw)
+
+
+def gh_pull(n, user=True, head_repo=True):
+    return ns(
+        number=n,
+        html_url=f"https://github.com/o/r/pull/{n}",
+        title=f"T{n}",
+        body=None,
+        state="open",
+        draft=None,
+        user=ns(login="bot", type="Bot") if user else None,
+        head=ns(
+            ref=f"contrib/{n}",
+            sha=f"h{n}",
+            repo=ns(full_name="o/r") if head_repo else None,
+        ),
+        base=ns(ref="main"),
+        created_at="2026-01-01",
+        updated_at="2026-01-02",
+    )
+
+
+class FakeReadPulls:
+    def __init__(self, count):
+        self.count = count
+        self.calls = []
+
+    async def async_list(self, owner, repo, **kwargs):
+        self.calls.append(kwargs)
+        start = (kwargs["page"] - 1) * kwargs["per_page"]
+        end = min(start + kwargs["per_page"], self.count)
+        return ok(
+            [
+                gh_pull(n, user=n != 1, head_repo=n != 1)
+                for n in range(start + 1, end + 1)
+            ]
+        )
+
+    async def async_get(self, owner, repo, number):
+        return ok(gh_pull(number))
+
+    async def async_list_commits(self, owner, repo, number, *, per_page, page):
+        self.calls.append(("commits", page))
+        author = ns(name="A", email="a@x", date="2026-01-03")
+        return ok(
+            [
+                ns(sha="c1", commit=ns(message="m", author=author)),
+                ns(sha="c2", commit=ns(message=None, author=None)),
+            ]
+        )
+
+
+async def test_open_pulls_maps_fields_and_passes_base_only_when_given(repo):
+    pulls = FakeReadPulls(3)
+    repo._gh.rest.pulls = pulls
+    got = await repo.open_pulls()
+    assert "base" not in pulls.calls[0]
+    assert pulls.calls[0]["sort"] == "created"
+    assert pulls.calls[0]["direction"] == "desc"
+    assert [p.number for p in got] == [1, 2, 3]
+    first, second = got[0], got[1]
+    assert (first.author, first.author_type, first.head_repo) == ("", "", "")
+    assert (second.author, second.author_type, second.head_repo) == (
+        "bot",
+        "Bot",
+        "o/r",
+    )
+    assert second.body == "" and second.draft is False
+    assert second.head_ref == "contrib/2" and second.base_ref == "main"
+    assert second.created_at == "2026-01-01"
+    await repo.open_pulls("dev")
+    assert pulls.calls[-1]["base"] == "dev"
+
+
+async def test_open_pulls_paginates_up_to_limit(repo):
+    pulls = FakeReadPulls(250)
+    repo._gh.rest.pulls = pulls
+    assert len(await repo.open_pulls(limit=250)) == 250
+    assert [c["page"] for c in pulls.calls] == [1, 2, 3]
+    pulls.calls.clear()
+    got = await repo.open_pulls(limit=5)
+    assert len(got) == 5 and pulls.calls[0]["per_page"] == 5
+
+
+async def test_get_pull(repo):
+    repo._gh.rest.pulls = FakeReadPulls(0)
+    assert (await repo.get_pull(4)).number == 4
+
+
+async def test_pull_commits_handles_author_none(repo):
+    repo._gh.rest.pulls = FakeReadPulls(0)
+    got = await repo.pull_commits(1)
+    assert got[0].author_name == "A" and got[0].author_date == "2026-01-03"
+    assert got[1].message == "" and got[1].author_email == ""
+    assert got[1].author_name == "" and got[1].author_date == ""
+
+
+class FakeIssues:
+    async def async_list_comments(self, owner, repo, number, *, per_page, page):
+        user = ns(login="u", type="User")
+        return ok(
+            [
+                ns(
+                    id=1,
+                    user=user,
+                    body="hi",
+                    html_url="h1",
+                    created_at="c",
+                    updated_at="u",
+                ),
+                ns(
+                    id=2,
+                    user=None,
+                    body=object(),
+                    html_url="h2",
+                    created_at="c",
+                    updated_at="u",
+                ),
+            ]
+        )
+
+
+async def test_pull_comments_maps_a_non_str_body_to_empty(repo):
+    repo._gh.rest.issues = FakeIssues()
+    got = await repo.pull_comments(1)
+    assert got[0].body == "hi" and got[0].author == "u"
+    assert got[1].body == "" and got[1].author == ""
+
+
+async def test_list_dir_filters_files_and_maps_404(repo):
+    repo._gh.rest.repos.contents["d"] = [
+        ns(name="a.json", type="file"),
+        ns(name="sub", type="dir"),
+    ]
+    repo._gh.rest.repos.contents["f"] = {"type": "file", "name": "f"}
+    assert await repo.list_dir("d", ref="dev") == ["a.json"]
+    assert repo._gh.rest.repos.kwargs == {"ref": "dev"}
+    assert await repo.list_dir("f") == []
+    assert await repo.list_dir("missing") == []

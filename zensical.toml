@@ -17,6 +17,7 @@ nav = [
     { "Sign in with Keycloak" = "sign-in.md" },
     { "Sinks" = "sinks.md" },
     { "Merge rows into a table" = "tables.md" },
+    { "Read open contributions" = "curation.md" },
     { "Drafts in storage" = "drafts.md" },
     { "Adopt the draft pattern" = "adopt.md" },
     { "Ingest" = "ingest.md" },

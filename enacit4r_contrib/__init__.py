@@ -1,6 +1,7 @@
 """Data contribution pipeline: intake, validation, submission."""
 
 from enacit4r_contrib.api import contribution_router
+from enacit4r_contrib.contributions import open_contributions
 from enacit4r_contrib.issues import Issue, Report
 from enacit4r_contrib.pipeline import (
     Bundle,
@@ -36,5 +37,6 @@ __all__ = [
     "contribution_router",
     "duplicate_id_issues",
     "merge_rows",
+    "open_contributions",
     "table_ids",
 ]
