@@ -27,16 +27,16 @@ workflow of the data repository loads the changed files into Postgres.
 | Skip the upload of a file that is already on the branch           | No                                       | 0.6.0: `commit_tree` |
 | The contributor as the commit author                              | No: the App is the author                | 0.6.0: `author=`     |
 | One shared HTTP client for the full process                       | No: each `GitHubRepo` makes its client   | 0.6.0: `github=`     |
-| githubkit 0.17                                                    | No: the extra stops before 0.13          | 0.6.0: up to 0.17    |
+| githubkit 0.17                                                    | No: the extra stops before 0.13          | 0.6.0: 0.17.1        |
 | Trailers `Submitted-by`, `Institution`, `ORCID`                   | Yes                                      | Same format          |
 | Trailers `GitHub`, `Dismissed-Warning`, `Verified-by`             | No                                       | Stays in resslab-hub |
-| No `Institution` trailer for an empty field                       | No: the library always writes it         | Roadmap              |
+| No `Institution` trailer for an empty field                       | No: the library always writes it         | 0.6.0: `format_trailers` |
 | Role from the GitHub permission on the data repository            | `permission` gives the exact role        | resslab-hub maps it  |
 | Review requests to the repository admins                          | `request_reviewers`                      | Same concept         |
-| Edit an open contribution: a new commit on the same pull request  | No                                       | Roadmap              |
+| Edit an open contribution: a new commit on the same pull request  | No                                       | 0.6.0: `commit_on_branch` |
 | Verification pull requests that change a status column           | No                                       | Stays in resslab-hub |
-| Rows merged into the main CSV inside the pull request             | No: the library writes `submissions/`    | Roadmap              |
-| Duplicate identifiers against the data repository                 | No                                       | Roadmap              |
+| Rows merged into the main CSV inside the pull request             | No: the library writes `submissions/`    | 0.6.0: `TableMerge`  |
+| Duplicate identifiers against the data repository                 | No                                       | 0.6.0: `table_ids`   |
 | A curation queue built from the open pull requests                | No                                       | Stays in resslab-hub |
 | Safe extraction of a `.tar.gz` to a folder                        | `read_upload`, in memory                 | Stays in resslab-hub |
 | Sign-in with an e-mail code, GitHub and ORCID                     | No: Keycloak does sign-in                | Stays in resslab-hub |
@@ -58,8 +58,8 @@ swap brings no gain.
 ## Decisions for resslab-hub before the next steps
 
 The maintainers of resslab-hub must make these decisions. Each one
-changes what the library builds. The table gives a recommendation for
-each decision.
+changes what the library builds. On 2026-11-25 the maintainers
+accepted the recommendation of each decision.
 
 | Decision                                 | Options                                                                  | Recommendation                                                      |
 | ---------------------------------------- | ------------------------------------------------------------------------ | ------------------------------------------------------------------- |
@@ -76,28 +76,29 @@ repository, not a library task.
 
 ## Roadmap
 
-Each step is one library version and one pull request in resslab-hub.
-After each step, the resslab-hub tests of the GitHub client, the
-contributions and the curation pass with no edit.
+The six steps ship together in library 0.6.0, on one library branch and
+one resslab-hub branch. After each step, the resslab-hub tests of the
+GitHub client, the contributions and the curation pass with no edit.
 
-1. Done in draft: the commit goes through `commit_tree`, with a shared
-   client and the contributor as author (library 0.6.0).
-2. Library 0.6.0, then resslab-hub: the pull request, the review
-   requests and the branch cleanup go through `GitHubRepo`. resslab-hub
-   maps the exact role of `permission` to its base levels.
-3. Library 0.7.0: optional trailers. The library leaves out an empty
-   field and accepts extra trailers from the project. resslab-hub then
-   uses the library to write and read its trailers.
-4. Library 0.7.0: edit a contribution. The library adds a commit to an
-   open branch. If the branch moved, the library refuses the update.
-   resslab-hub then answers 409, as today.
-5. Library 0.8.0, only if D1 is A: a table merge option of
-   `GitHubPRSink` and a helper for duplicate identifiers.
-6. Library 0.8.0: a read API for open contributions. It gives each pull
-   request with the provenance from its trailers. The curation queue
-   of resslab-hub then reads through it.
+1. The commit goes through `commit_tree`, with a shared client and the
+   contributor as author.
+2. The pull request, the review requests and the branch cleanup go
+   through `GitHubRepo`. resslab-hub maps the exact role of
+   `permission` to its base levels.
+3. Trailers: resslab-hub writes and reads its trailers with
+   `format_trailers`, `address`, `parse_trailers` and `split_address`.
+4. Edit a contribution: `commit_on_branch` adds a commit to an open
+   branch. If the branch moved, it raises `BranchMoved`, and
+   resslab-hub answers 409, as before.
+5. The table module merges the rows into the main CSV and finds the
+   duplicate identifiers.
+6. The read API (`open_pulls`, `pull_commits`, `pull_comments`,
+   `list_dir`, `open_contributions`) feeds the curation queue.
 
-These parts stay in resslab-hub after step 6: the verification pull
+The library requires githubkit 0.17.1, so the two adopters run the same
+version.
+
+These parts stay in resslab-hub: the verification pull
 requests, the classification of the curation queue, the nine data
 types and their validators, the sign-in, and the load into Postgres.
 The verification pull requests use `commit_tree` and `open_pull` of the
@@ -105,4 +106,5 @@ library.
 
 ## Next step
 
-Decide D1 to D5 with the maintainers of resslab-hub. Then start step 2.
+Test the resslab-hub branch on the test fork of the data repository.
+Then tag the library and pin resslab-hub to the tag.
