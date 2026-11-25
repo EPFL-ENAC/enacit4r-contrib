@@ -13,7 +13,7 @@ from githubkit import (
 from githubkit.exception import RequestFailed
 
 from enacit4r_contrib.github import GitHubRepo, blob_sha
-from enacit4r_contrib.repo import PullRef
+from enacit4r_contrib.repo import BranchMoved, PullFile, PullRef
 
 
 def ok(data):
@@ -92,8 +92,21 @@ class FakePulls:
         self.calls.append(("create", kwargs))
         return ok({"number": 7, "html_url": "https://github.com/o/r/pull/7"})
 
-    async def async_request_reviewers(self, owner, repo, number, *, reviewers):
-        self.calls.append(("reviewers", number, reviewers))
+    async def async_request_reviewers(self, owner, repo, number, *, data):
+        self.calls.append(("reviewers", number, data["reviewers"]))
+
+    async def async_update(self, owner, repo, number, *, data):
+        self.calls.append(("update", number, data))
+
+    async def async_list_files(self, owner, repo, number, *, per_page, page):
+        self.calls.append(("files", number, page))
+        n = per_page if page == 1 else 1
+        return ok(
+            [
+                SimpleNamespace(filename=f"f{page}-{i}", status="added", sha=f"s{i}")
+                for i in range(n)
+            ]
+        )
 
     async def async_list(self, owner, repo, *, state, per_page, page):
         self.calls.append(("list", page))
@@ -298,3 +311,62 @@ def test_constructor_uses_injected_github_and_rejects_credentials_with_it():
         GitHubRepo("o/r", github=gh, token="t")
     with pytest.raises(ValueError):
         GitHubRepo("o/r", github=gh, app_id="1")
+
+
+async def test_commit_on_branch_moves_the_ref_without_force(repo):
+    calls = []
+
+    async def update_ref(owner, name, *, ref, data):
+        calls.append((ref, data))
+
+    repo._gh.rest.git.async_update_ref = update_ref
+    sha = await repo.commit_on_branch("contrib/x", "p", {"a.txt": b"x"}, "m")
+    assert sha == "new-commit"
+    assert repo._gh.rest.git.commit["parents"] == ["p"]
+    assert calls == [("heads/contrib/x", {"sha": "new-commit", "force": False})]
+
+
+async def test_commit_on_branch_with_nothing_to_write_moves_no_ref(repo):
+    async def update_ref(owner, name, *, ref, data):
+        raise AssertionError("no ref update expected")
+
+    repo._gh.rest.git.async_update_ref = update_ref
+    known = {"a.txt": blob_sha(b"x")}
+    assert (
+        await repo.commit_on_branch("b", "p", {"a.txt": b"x"}, "m", known=known) == "p"
+    )
+
+
+async def test_commit_on_branch_raises_branch_moved_on_422(repo):
+    async def update_ref(owner, name, *, ref, data):
+        raise failed(422)
+
+    repo._gh.rest.git.async_update_ref = update_ref
+    with pytest.raises(BranchMoved) as info:
+        await repo.commit_on_branch("contrib/x", "p", {"a.txt": b"x"}, "m")
+    assert info.value.branch == "contrib/x"
+    assert isinstance(info.value.__cause__, RequestFailed)
+
+
+async def test_update_pull_body(repo):
+    await repo.update_pull_body(7, "new body")
+    assert repo._gh.rest.pulls.calls == [("update", 7, {"body": "new body"})]
+
+
+async def test_pull_files_reads_all_pages(repo):
+    files = await repo.pull_files(7)
+    assert len(files) == 101
+    assert files[0] == PullFile("f1-0", "added", "s0")
+    assert files[-1] == PullFile("f2-0", "added", "s0")
+    assert repo._gh.rest.pulls.calls == [("files", 7, 1), ("files", 7, 2)]
+
+
+async def test_request_reviewers_sends_a_data_body(repo):
+    sent = []
+
+    async def request(owner, name, number, **kwargs):
+        sent.append(kwargs)
+
+    repo._gh.rest.pulls.async_request_reviewers = request
+    await repo.request_reviewers(7, ["alice", "bob"])
+    assert sent == [{"data": {"reviewers": ["alice", "bob"]}}]

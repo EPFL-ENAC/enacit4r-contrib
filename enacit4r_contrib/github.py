@@ -2,13 +2,13 @@
 
 import asyncio
 import base64
-import hashlib
 import logging
+from collections.abc import Sequence
 
 from githubkit import AppInstallationAuthStrategy, GitHub, TokenAuthStrategy
 from githubkit.exception import GitHubException, RequestFailed
 
-from enacit4r_contrib.repo import ROLES, PullRef
+from enacit4r_contrib.repo import ROLES, BranchMoved, PullFile, PullRef, blob_sha
 
 log = logging.getLogger(__name__)
 
@@ -16,9 +16,8 @@ MAX_BLOB_UPLOADS = 8
 PAGE_SIZE = 100
 
 
-def blob_sha(data: bytes) -> str:
-    """The git blob id of `data`, the same as `git hash-object`."""
-    return hashlib.sha1(b"blob %d\0" % len(data) + data).hexdigest()
+__all__ = ["GitHubRepo", "blob_sha"]
+MAX_PULL_FILE_PAGES = 30  # GitHub lists at most 3000 files.
 
 
 class GitHubRepo:
@@ -183,6 +182,52 @@ class GitHubRepo:
         )
         return commit.parsed_data.sha
 
+    async def commit_on_branch(
+        self,
+        branch: str,
+        head: str,
+        files: dict[str, bytes],
+        message: str,
+        *,
+        deletions: Sequence[str] = (),
+        author: tuple[str, str] | None = None,
+        known: dict[str, str] | None = None,
+    ) -> str:
+        sha = await self.commit_tree(
+            head, files, message, deletions=deletions, author=author, known=known
+        )
+        if sha == head:
+            return head
+        try:
+            await self._gh.rest.git.async_update_ref(
+                self.owner,
+                self.name,
+                ref=f"heads/{branch}",
+                data={"sha": sha, "force": False},
+            )
+        except RequestFailed as e:
+            if e.response.status_code == 422:
+                raise BranchMoved(branch) from e
+            raise
+        return sha
+
+    async def update_pull_body(self, number: int, body: str) -> None:
+        await self._gh.rest.pulls.async_update(
+            self.owner, self.name, number, data={"body": body}
+        )
+
+    async def pull_files(self, number: int) -> list[PullFile]:
+        out: list[PullFile] = []
+        for page in range(1, MAX_PULL_FILE_PAGES + 1):
+            resp = await self._gh.rest.pulls.async_list_files(
+                self.owner, self.name, number, per_page=PAGE_SIZE, page=page
+            )
+            items = resp.parsed_data
+            out += [PullFile(f.filename, f.status, f.sha) for f in items]
+            if len(items) < PAGE_SIZE:
+                break
+        return out
+
     async def open_pull(self, branch: str, base: str, title: str, body: str) -> PullRef:
         resp = await self._gh.rest.pulls.async_create(
             self.owner, self.name, head=branch, base=base, title=title, body=body
@@ -194,7 +239,7 @@ class GitHubRepo:
         if not logins:
             return
         await self._gh.rest.pulls.async_request_reviewers(
-            self.owner, self.name, number, reviewers=logins
+            self.owner, self.name, number, data={"reviewers": logins}
         )
 
     async def open_pull_heads(self) -> list[str]:

@@ -144,6 +144,39 @@ GitHub does not start other workflows on it. A pull request that an
 App opens starts the workflows of the data repository. Thus your CI
 can check each contribution before the review.
 
+## Edit an open contribution
+
+A contributor can change a contribution while its pull request is
+open. `GitHubRepo.commit_on_branch` adds one commit to the branch of
+the pull request.
+
+```python
+from enacit4r_contrib.repo import BranchMoved
+
+files = await repo.pull_files(number)
+try:
+    sha = await repo.commit_on_branch(
+        branch,
+        head,
+        {"submissions/x/data.csv": data},
+        message,
+        known={f.path: f.sha for f in files if f.sha},
+    )
+except BranchMoved:
+    ...  # Read the branch again, then ask the contributor to try again.
+await repo.update_pull_body(number, body)
+```
+
+- `head` is the commit sha that the edit starts from.
+- `commit_on_branch` moves the branch to the new commit. It does not
+  force the move. If another commit is on the branch since `head`,
+  GitHub refuses the move and the method raises `BranchMoved`.
+- `known` and `deletions` work as in `commit_tree`. If there is
+  nothing to change, the method returns `head` and moves nothing.
+- `pull_files` gives the path, the status and the blob sha of each
+  file that the pull request changes. GitHub lists at most 3000 files.
+- `update_pull_body` replaces the body of the pull request.
+
 ## Next step
 
 Read [Sinks](sinks.md) to see what the sink writes in the repository.

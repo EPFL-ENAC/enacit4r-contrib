@@ -18,6 +18,13 @@ what it did in a public attribute:
 | `pulls`     | Each pull request, with `title`, `body`, `url`, `open`    |
 | `reviewers` | The reviewers for each pull request number                |
 | `deleted`   | The branches that the sink deleted                        |
+| `heads`     | The last commit sha of each branch                        |
+
+`FakeRepo` also fakes the methods that edit an open contribution.
+`commit_on_branch` changes `branches`, adds to `commits` and moves
+`heads`. It raises `BranchMoved` when `head` is not `heads[branch]`.
+`update_pull_body` changes the body in `pulls`. `pull_files` gives
+the files of the branch that are not the same as in the base branch.
 
 To test a failure, set `fail_on` to the name of a method, for example
 `fail_on="open_pull"`. That method then raises `RuntimeError`.
