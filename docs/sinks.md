@@ -54,6 +54,25 @@ with `branch_prefix`. The pipeline compares this number with
 
 After the merge, the [ingest action](ingest.md) folds the submission into your data.
 
+## Add trailers to the commit message
+
+`enacit4r_contrib.trailers.build_commit_message` writes the standard
+trailers. To add your own trailers, give them in `extra`. The function
+writes them after the standard trailers.
+
+```python
+from enacit4r_contrib.trailers import build_commit_message
+
+message = build_commit_message(
+    "Data contribution", contributor, extra=[("Dataset", "walls")]
+)
+```
+
+`format_trailers(title, pairs)` writes a title, a blank line and one
+`Key: value` line for each pair. It makes each value one line. It
+removes each pair that has an empty value. `address(name, email)` gives
+`Name <email>`, and `split_address` gives the name and the email back.
+
 ## Write a different sink
 
 A `Sink` is a class with two async methods. You do not need to
