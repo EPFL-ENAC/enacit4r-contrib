@@ -118,41 +118,7 @@ class GitHubRepo:
     ) -> str:
         git = self._gh.rest.git
         ref = await git.async_get_ref(self.owner, self.name, f"heads/{base}")
-        base_sha = ref.json()["object"]["sha"]
-        base_commit = await git.async_get_commit(self.owner, self.name, base_sha)
-        base_tree = base_commit.json()["tree"]["sha"]
-
-        slots = asyncio.Semaphore(MAX_BLOB_UPLOADS)
-
-        async def upload(content: bytes) -> str:
-            async with slots:
-                blob = await git.async_create_blob(
-                    self.owner,
-                    self.name,
-                    content=base64.b64encode(content).decode(),
-                    encoding="base64",
-                )
-            return blob.json()["sha"]
-
-        paths = list(files)
-        shas = await asyncio.gather(*(upload(files[p]) for p in paths))
-        tree = await git.async_create_tree(
-            self.owner,
-            self.name,
-            base_tree=base_tree,
-            tree=[
-                {"path": p, "mode": "100644", "type": "blob", "sha": s}
-                for p, s in zip(paths, shas, strict=True)
-            ],
-        )
-        commit = await git.async_create_commit(
-            self.owner,
-            self.name,
-            message=message,
-            tree=tree.json()["sha"],
-            parents=[base_sha],
-        )
-        sha = commit.json()["sha"]
+        sha = await self.commit_tree(ref.json()["object"]["sha"], files, message)
         await git.async_create_ref(
             self.owner, self.name, ref=f"refs/heads/{branch}", sha=sha
         )

@@ -1,6 +1,6 @@
 [project]
 name = "enacit4r_contrib"
-version = "0.6.0"
+version = "0.6.1"
 description = "Data contribution pipeline for EPFL ENAC IT4R projects: intake, validation, submission"
 license = {text = "MIT"}
 readme = "README.md"
@@ -14,6 +14,9 @@ dependencies = [
 [project.optional-dependencies]
 github = [
     "githubkit[auth-app]>=0.17.1,<0.18",
+    # githubkit moves to httpx2 and warns on plain httpx.
+    "httpx2>=2.16,<3",
+    "hishel[async,httpx2]>=1.4.0,<2",
 ]
 
 [dependency-groups]

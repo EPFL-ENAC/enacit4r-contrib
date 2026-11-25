@@ -123,7 +123,7 @@ def repo():
     return r
 
 
-async def test_create_branch_commit_sends_binary_as_base64_on_base_tree(repo):
+async def test_create_branch_commit_sends_binary_as_base64_on_the_base_commit(repo):
     png = b"\x89PNG\x00\xff"
     sha = await repo.create_branch_commit(
         "contrib/x",
@@ -134,10 +134,12 @@ async def test_create_branch_commit_sends_binary_as_base64_on_base_tree(repo):
     git = repo._gh.rest.git
     assert sha == "new-commit"
     assert ("get_ref", "heads/main") in git.calls
-    assert ("get_commit", "base-sha") in git.calls
-    sent = {base64.b64decode(c) for c, enc in git.blobs.values() if enc == "base64"}
-    assert sent == {png, b"id\n1\n"}
-    assert git.tree["base_tree"] == "base-tree"
+    # GitHub takes a commit sha as base_tree and uses that commit's tree.
+    assert git.tree["base_tree"] == "base-sha"
+    # Text goes as UTF-8, binary as base64: GitHub stores the same bytes.
+    assert sorted(git.blobs.values()) == sorted(
+        [(base64.b64encode(png).decode(), "base64"), ("id\n1\n", "utf-8")]
+    )
     entries = {e["path"]: e for e in git.tree["tree"]}
     assert set(entries) == {"img.png", "a.csv"}
     assert all(e["mode"] == "100644" and e["type"] == "blob" for e in entries.values())
@@ -232,7 +234,9 @@ def test_constructor_picks_auth_strategy():
     )
     assert isinstance(app._gh.auth, AppInstallationAuthStrategy)
     assert app._gh.auth.private_key == "-----BEGIN\nKEY"
-    assert app._gh.config.timeout == httpx.Timeout(30)
+    # githubkit builds the timeout with httpx2 when it is installed.
+    timeout = app._gh.config.timeout
+    assert (timeout.connect, timeout.read, timeout.write, timeout.pool) == (30,) * 4
 
 
 @pytest.mark.parametrize(
