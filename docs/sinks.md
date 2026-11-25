@@ -91,3 +91,5 @@ contribution as a draft in a folder, in S3, or in a database. Read
 
 Read [Testing](testing.md) to test your sink and your routes without
 GitHub.
+
+To merge rows into one main table, read [Merge rows into a table](tables.md).

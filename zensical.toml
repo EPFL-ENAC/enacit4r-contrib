@@ -16,6 +16,7 @@ nav = [
     { "GitHub App" = "github-app.md" },
     { "Sign in with Keycloak" = "sign-in.md" },
     { "Sinks" = "sinks.md" },
+    { "Merge rows into a table" = "tables.md" },
     { "Drafts in storage" = "drafts.md" },
     { "Adopt the draft pattern" = "adopt.md" },
     { "Ingest" = "ingest.md" },
