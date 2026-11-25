@@ -25,6 +25,7 @@ nav = [
   { "Background" = [
     { "Contribution pipelines in five projects" = "research/contribution-pipelines.md" },
     { "Sign-in study" = "research/sign-in-keycloak.md" },
+    { "resslab-hub gap study" = "research/resslab-hub-gap.md" },
   ] },
 ]
 
