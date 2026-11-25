@@ -71,7 +71,7 @@ jobs:
         with:
           fetch-depth: 0
       - uses: astral-sh/setup-uv@v6
-      - uses: EPFL-ENAC/enacit4r-contrib/withdraw@0.6.0
+      - uses: EPFL-ENAC/enacit4r-contrib/withdraw@0.6.1
         with:
           target: ${{ inputs.target }}
           reason: ${{ inputs.reason }}
