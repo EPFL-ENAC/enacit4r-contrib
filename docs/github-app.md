@@ -78,6 +78,48 @@ in place of each line break. `GitHubRepo` changes each `\n` back to a
 line break. If you give only one or two of the three settings,
 `GitHubRepo` raises `ValueError`.
 
+## Use your own client
+
+Your application can already have a githubkit client. Give it to
+`GitHubRepo` with the `github` argument. Then `GitHubRepo` uses this
+client for each call. The client keeps its connection pool, its
+timeout and its cache settings. Do not give `token` or the App
+settings with `github`. If you give both, `GitHubRepo` raises
+`ValueError`.
+
+```python
+from githubkit import GitHub
+
+gh = GitHub(auth, timeout=60)
+repo = GitHubRepo("EPFL-ENAC/my-dataset", github=gh)
+```
+
+## Make a commit without a branch
+
+`commit_tree` makes one commit on top of a commit that you name. It
+does not move a branch. It returns the sha of the new commit.
+
+```python
+sha = await repo.commit_tree(
+    parent_sha,
+    {"data/a.csv": b"id\n1\n"},
+    "Add a.csv",
+    deletions=["data/old.csv"],
+    author=("Ada Lovelace", "ada@example.org"),
+    known={"data/a.csv": "<blob sha at parent>"},
+)
+```
+
+- `known` maps a path to its blob sha at the parent. If a file has the
+  same blob sha, `commit_tree` does not send it. The function
+  `enacit4r_contrib.github.blob_sha` gives the blob sha of some bytes.
+  It gives the same value as `git hash-object`.
+- `deletions` lists the paths to remove.
+- `author` sets the author of the commit. Without `author`, the App is
+  the author.
+- If there is nothing to change, `commit_tree` makes no commit and
+  returns `parent`.
+
 ## Who is the author
 
 A contributor does not have a verified GitHub account. Thus the App is
@@ -101,6 +143,39 @@ If a workflow opens a pull request with the default `GITHUB_TOKEN`,
 GitHub does not start other workflows on it. A pull request that an
 App opens starts the workflows of the data repository. Thus your CI
 can check each contribution before the review.
+
+## Edit an open contribution
+
+A contributor can change a contribution while its pull request is
+open. `GitHubRepo.commit_on_branch` adds one commit to the branch of
+the pull request.
+
+```python
+from enacit4r_contrib.repo import BranchMoved
+
+files = await repo.pull_files(number)
+try:
+    sha = await repo.commit_on_branch(
+        branch,
+        head,
+        {"submissions/x/data.csv": data},
+        message,
+        known={f.path: f.sha for f in files if f.sha},
+    )
+except BranchMoved:
+    ...  # Read the branch again, then ask the contributor to try again.
+await repo.update_pull_body(number, body)
+```
+
+- `head` is the commit sha that the edit starts from.
+- `commit_on_branch` moves the branch to the new commit. It does not
+  force the move. If another commit is on the branch since `head`,
+  GitHub refuses the move and the method raises `BranchMoved`.
+- `known` and `deletions` work as in `commit_tree`. If there is
+  nothing to change, the method returns `head` and moves nothing.
+- `pull_files` gives the path, the status and the blob sha of each
+  file that the pull request changes. GitHub lists at most 3000 files.
+- `update_pull_body` replaces the body of the pull request.
 
 ## Next step
 

@@ -10,6 +10,7 @@ from datetime import date
 from enacit4r_contrib.issues import Report
 from enacit4r_contrib.pipeline import Bundle, Contributor, Receipt
 from enacit4r_contrib.repo import Repo
+from enacit4r_contrib.tables import TableError, TableMerge, merge_rows
 from enacit4r_contrib.trailers import build_commit_message
 
 log = logging.getLogger(__name__)
@@ -76,6 +77,7 @@ class GitHubPRSink:
         reviewers: Sequence[str] = (),
         title: str = "Data contribution",
         today: Callable[[], date] = date.today,
+        table: TableMerge | None = None,
     ):
         self.repo = repo
         self.base = base
@@ -84,6 +86,7 @@ class GitHubPRSink:
         self.reviewers = reviewers
         self.title = title
         self.today = today
+        self.table = table
 
     async def submit(
         self, bundle: Bundle, contributor: Contributor, report: Report
@@ -91,7 +94,12 @@ class GitHubPRSink:
         c = contributor
         id_ = f"{self.today():%Y-%m-%d}-{slug(c.name)}-{secrets.token_hex(3)}"
         branch = self.branch_prefix + id_
-        files = {f"{self.folder}/{id_}/{path}": data for path, data in bundle.items()}
+        if self.table is None:
+            files = {
+                f"{self.folder}/{id_}/{path}": data for path, data in bundle.items()
+            }
+        else:
+            files = await self._merged(bundle)
         try:
             await self.repo.create_branch_commit(
                 branch,
@@ -117,6 +125,16 @@ class GitHubPRSink:
             except Exception:
                 log.exception("could not request reviewers on #%s", pull.number)
         return Receipt(id_, pull.url)
+
+    async def _merged(self, bundle: Bundle) -> dict[str, bytes]:
+        t = self.table
+        if t.path not in bundle:
+            raise TableError(f"The bundle has no file {t.path!r}")
+        current = await self.repo.get_file(t.path, ref=self.base)
+        merged = merge_rows(
+            current, bundle[t.path], id_column=t.id_column, fill=t.fill, fixed=t.fixed
+        )
+        return {**bundle, t.path: merged}
 
     async def open_count(self) -> int:
         heads = await self.repo.open_pull_heads()

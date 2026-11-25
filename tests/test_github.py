@@ -4,15 +4,21 @@ from types import SimpleNamespace
 
 import httpx
 import pytest
-from githubkit import AppInstallationAuthStrategy, Response, TokenAuthStrategy
+from githubkit import (
+    AppInstallationAuthStrategy,
+    GitHub,
+    Response,
+    TokenAuthStrategy,
+)
 from githubkit.exception import RequestFailed
 
-from enacit4r_contrib.github import GitHubRepo
-from enacit4r_contrib.repo import PullRef
+from enacit4r_contrib.github import GitHubRepo, blob_sha
+from enacit4r_contrib.repo import BranchMoved, PullFile, PullRef
 
 
 def ok(data):
-    return SimpleNamespace(json=lambda: data)
+    parsed = SimpleNamespace(**data) if isinstance(data, dict) else data
+    return SimpleNamespace(json=lambda: data, parsed_data=parsed)
 
 
 def failed(status):
@@ -86,8 +92,21 @@ class FakePulls:
         self.calls.append(("create", kwargs))
         return ok({"number": 7, "html_url": "https://github.com/o/r/pull/7"})
 
-    async def async_request_reviewers(self, owner, repo, number, *, reviewers):
-        self.calls.append(("reviewers", number, reviewers))
+    async def async_request_reviewers(self, owner, repo, number, *, data):
+        self.calls.append(("reviewers", number, data["reviewers"]))
+
+    async def async_update(self, owner, repo, number, *, data):
+        self.calls.append(("update", number, data))
+
+    async def async_list_files(self, owner, repo, number, *, per_page, page):
+        self.calls.append(("files", number, page))
+        n = per_page if page == 1 else 1
+        return ok(
+            [
+                SimpleNamespace(filename=f"f{page}-{i}", status="added", sha=f"s{i}")
+                for i in range(n)
+            ]
+        )
 
     async def async_list(self, owner, repo, *, state, per_page, page):
         self.calls.append(("list", page))
@@ -197,6 +216,15 @@ async def test_delete_branch_swallows_github_error(repo, caplog):
     assert "could not delete branch b" in caplog.text
 
 
+async def test_delete_branch_swallows_any_error(repo, caplog):
+    async def refuse(*args, **kwargs):
+        raise RuntimeError("Resource not accessible by integration")
+
+    repo._gh.rest.git.async_delete_ref = refuse
+    await repo.delete_branch("contrib/b")
+    assert "could not delete branch contrib/b" in caplog.text
+
+
 def test_constructor_picks_auth_strategy():
     assert isinstance(GitHubRepo("o/r", token="t")._gh.auth, TokenAuthStrategy)
     app = GitHubRepo(
@@ -238,3 +266,259 @@ async def test_permission_maps_404_to_none_and_reads_the_role(repo):
     assert await repo.permission("nobody") == "none"
     assert await repo.permission("ada") == "maintain"
     assert await repo.permission("bob") == "read"
+
+
+def test_blob_sha_matches_git_hash_object():
+    # printf 'one\n' | git hash-object --stdin
+    assert blob_sha(b"one\n") == "5626abf0f72e58d7a153368ba57db4c673c0e171"
+
+
+async def test_commit_tree_uploads_every_file_without_known(repo):
+    png = b"\x89PNG\x00\xff"
+    sha = await repo.commit_tree("p", {"a.csv": b"id\n1\n", "img.png": png}, "m")
+    git = repo._gh.rest.git
+    assert sha == "new-commit"
+    assert git.tree["base_tree"] == "p"
+    assert [e["path"] for e in git.tree["tree"]] == ["a.csv", "img.png"]
+    blobs = {e["path"]: git.blobs[e["sha"]] for e in git.tree["tree"]}
+    assert blobs["a.csv"] == ("id\n1\n", "utf-8")
+    assert blobs["img.png"] == (base64.b64encode(png).decode(), "base64")
+    assert git.commit["parents"] == ["p"]
+    assert git.commit["tree"] == "new-tree"
+    assert "author" not in git.commit
+    assert not hasattr(git, "ref")
+
+
+async def test_commit_tree_skips_known_unchanged_and_appends_deletions(repo):
+    files = {"same.txt": b"one\n", "new.txt": b"two\n"}
+    known = {"same.txt": blob_sha(b"one\n"), "new.txt": blob_sha(b"old\n")}
+    await repo.commit_tree(
+        "p", files, "m", known=known, deletions=["gone.txt"], author=("A", "a@x")
+    )
+    git = repo._gh.rest.git
+    assert len(git.blobs) == 1
+    assert [(e["path"], e["sha"]) for e in git.tree["tree"]] == [
+        ("new.txt", "blob0"),
+        ("gone.txt", None),
+    ]
+    assert git.commit["author"] == {"name": "A", "email": "a@x"}
+
+
+async def test_commit_tree_with_nothing_to_write_returns_parent(repo):
+    known = {"a.txt": blob_sha(b"x")}
+    assert await repo.commit_tree("p", {"a.txt": b"x"}, "m", known=known) == "p"
+    git = repo._gh.rest.git
+    assert git.blobs == {}
+    assert not hasattr(git, "tree")
+    assert not hasattr(git, "commit")
+
+
+def test_constructor_uses_injected_github_and_rejects_credentials_with_it():
+    gh = GitHub(TokenAuthStrategy("t"))
+    assert GitHubRepo("o/r", github=gh)._gh is gh
+    with pytest.raises(ValueError):
+        GitHubRepo("o/r", github=gh, token="t")
+    with pytest.raises(ValueError):
+        GitHubRepo("o/r", github=gh, app_id="1")
+
+
+async def test_commit_on_branch_moves_the_ref_without_force(repo):
+    calls = []
+
+    async def update_ref(owner, name, *, ref, data):
+        calls.append((ref, data))
+
+    repo._gh.rest.git.async_update_ref = update_ref
+    sha = await repo.commit_on_branch("contrib/x", "p", {"a.txt": b"x"}, "m")
+    assert sha == "new-commit"
+    assert repo._gh.rest.git.commit["parents"] == ["p"]
+    assert calls == [("heads/contrib/x", {"sha": "new-commit", "force": False})]
+
+
+async def test_commit_on_branch_with_nothing_to_write_moves_no_ref(repo):
+    async def update_ref(owner, name, *, ref, data):
+        raise AssertionError("no ref update expected")
+
+    repo._gh.rest.git.async_update_ref = update_ref
+    known = {"a.txt": blob_sha(b"x")}
+    assert (
+        await repo.commit_on_branch("b", "p", {"a.txt": b"x"}, "m", known=known) == "p"
+    )
+
+
+async def test_commit_on_branch_raises_branch_moved_on_422(repo):
+    async def update_ref(owner, name, *, ref, data):
+        raise failed(422)
+
+    repo._gh.rest.git.async_update_ref = update_ref
+    with pytest.raises(BranchMoved) as info:
+        await repo.commit_on_branch("contrib/x", "p", {"a.txt": b"x"}, "m")
+    assert info.value.branch == "contrib/x"
+    assert isinstance(info.value.__cause__, RequestFailed)
+
+
+async def test_update_pull_body(repo):
+    await repo.update_pull_body(7, "new body")
+    assert repo._gh.rest.pulls.calls == [("update", 7, {"body": "new body"})]
+
+
+async def test_pull_files_reads_all_pages(repo):
+    files = await repo.pull_files(7)
+    assert len(files) == 101
+    assert files[0] == PullFile("f1-0", "added", "s0")
+    assert files[-1] == PullFile("f2-0", "added", "s0")
+    assert repo._gh.rest.pulls.calls == [("files", 7, 1), ("files", 7, 2)]
+
+
+async def test_request_reviewers_sends_a_data_body(repo):
+    sent = []
+
+    async def request(owner, name, number, **kwargs):
+        sent.append(kwargs)
+
+    repo._gh.rest.pulls.async_request_reviewers = request
+    await repo.request_reviewers(7, ["alice", "bob"])
+    assert sent == [{"data": {"reviewers": ["alice", "bob"]}}]
+
+
+def ns(**kw):
+    return SimpleNamespace(**kw)
+
+
+def gh_pull(n, user=True, head_repo=True):
+    return ns(
+        number=n,
+        html_url=f"https://github.com/o/r/pull/{n}",
+        title=f"T{n}",
+        body=None,
+        state="open",
+        draft=None,
+        user=ns(login="bot", type="Bot") if user else None,
+        head=ns(
+            ref=f"contrib/{n}",
+            sha=f"h{n}",
+            repo=ns(full_name="o/r") if head_repo else None,
+        ),
+        base=ns(ref="main"),
+        created_at="2026-01-01",
+        updated_at="2026-01-02",
+    )
+
+
+class FakeReadPulls:
+    def __init__(self, count):
+        self.count = count
+        self.calls = []
+
+    async def async_list(self, owner, repo, **kwargs):
+        self.calls.append(kwargs)
+        start = (kwargs["page"] - 1) * kwargs["per_page"]
+        end = min(start + kwargs["per_page"], self.count)
+        return ok(
+            [
+                gh_pull(n, user=n != 1, head_repo=n != 1)
+                for n in range(start + 1, end + 1)
+            ]
+        )
+
+    async def async_get(self, owner, repo, number):
+        return ok(gh_pull(number))
+
+    async def async_list_commits(self, owner, repo, number, *, per_page, page):
+        self.calls.append(("commits", page))
+        author = ns(name="A", email="a@x", date="2026-01-03")
+        return ok(
+            [
+                ns(sha="c1", commit=ns(message="m", author=author)),
+                ns(sha="c2", commit=ns(message=None, author=None)),
+            ]
+        )
+
+
+async def test_open_pulls_maps_fields_and_passes_base_only_when_given(repo):
+    pulls = FakeReadPulls(3)
+    repo._gh.rest.pulls = pulls
+    got = await repo.open_pulls()
+    assert "base" not in pulls.calls[0]
+    assert pulls.calls[0]["sort"] == "created"
+    assert pulls.calls[0]["direction"] == "desc"
+    assert [p.number for p in got] == [1, 2, 3]
+    first, second = got[0], got[1]
+    assert (first.author, first.author_type, first.head_repo) == ("", "", "")
+    assert (second.author, second.author_type, second.head_repo) == (
+        "bot",
+        "Bot",
+        "o/r",
+    )
+    assert second.body == "" and second.draft is False
+    assert second.head_ref == "contrib/2" and second.base_ref == "main"
+    assert second.created_at == "2026-01-01"
+    await repo.open_pulls("dev")
+    assert pulls.calls[-1]["base"] == "dev"
+
+
+async def test_open_pulls_paginates_up_to_limit(repo):
+    pulls = FakeReadPulls(250)
+    repo._gh.rest.pulls = pulls
+    assert len(await repo.open_pulls(limit=250)) == 250
+    assert [c["page"] for c in pulls.calls] == [1, 2, 3]
+    pulls.calls.clear()
+    got = await repo.open_pulls(limit=5)
+    assert len(got) == 5 and pulls.calls[0]["per_page"] == 5
+
+
+async def test_get_pull(repo):
+    repo._gh.rest.pulls = FakeReadPulls(0)
+    assert (await repo.get_pull(4)).number == 4
+
+
+async def test_pull_commits_handles_author_none(repo):
+    repo._gh.rest.pulls = FakeReadPulls(0)
+    got = await repo.pull_commits(1)
+    assert got[0].author_name == "A" and got[0].author_date == "2026-01-03"
+    assert got[1].message == "" and got[1].author_email == ""
+    assert got[1].author_name == "" and got[1].author_date == ""
+
+
+class FakeIssues:
+    async def async_list_comments(self, owner, repo, number, *, per_page, page):
+        user = ns(login="u", type="User")
+        return ok(
+            [
+                ns(
+                    id=1,
+                    user=user,
+                    body="hi",
+                    html_url="h1",
+                    created_at="c",
+                    updated_at="u",
+                ),
+                ns(
+                    id=2,
+                    user=None,
+                    body=object(),
+                    html_url="h2",
+                    created_at="c",
+                    updated_at="u",
+                ),
+            ]
+        )
+
+
+async def test_pull_comments_maps_a_non_str_body_to_empty(repo):
+    repo._gh.rest.issues = FakeIssues()
+    got = await repo.pull_comments(1)
+    assert got[0].body == "hi" and got[0].author == "u"
+    assert got[1].body == "" and got[1].author == ""
+
+
+async def test_list_dir_filters_files_and_maps_404(repo):
+    repo._gh.rest.repos.contents["d"] = [
+        ns(name="a.json", type="file"),
+        ns(name="sub", type="dir"),
+    ]
+    repo._gh.rest.repos.contents["f"] = {"type": "file", "name": "f"}
+    assert await repo.list_dir("d", ref="dev") == ["a.json"]
+    assert repo._gh.rest.repos.kwargs == {"ref": "dev"}
+    assert await repo.list_dir("f") == []
+    assert await repo.list_dir("missing") == []

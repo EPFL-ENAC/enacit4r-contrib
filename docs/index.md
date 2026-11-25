@@ -78,6 +78,12 @@ each project.
   requests.
 - [Sinks](sinks.md): what `GitHubPRSink` writes, and how to write a
   different sink.
+- [Merge rows into a table](tables.md): add the rows of a contribution
+  to the main CSV in the pull request.
+- [Read open contributions](curation.md): list the open pull requests
+  with their submitters, for a curation page.
+- [Sign in with Keycloak](sign-in.md): know who submits, and who can
+  review.
 - [Drafts in storage](drafts.md): drafts, an admin review, and publication.
 - [Adopt the draft pattern](adopt.md): move your own upload code to the library.
 - [Ingest](ingest.md): fold a merged contribution into your data.
@@ -85,6 +91,8 @@ each project.
 - [Testing](testing.md): test your integration without GitHub.
 - [Contribution pipelines in five projects](research/contribution-pipelines.md):
   the study that gave the design.
+- [resslab-hub gap study](research/resslab-hub-gap.md): what resslab-hub
+  takes from the library, and what stays in resslab-hub.
 
 ## Next step
 

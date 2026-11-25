@@ -16,6 +16,8 @@ nav = [
     { "GitHub App" = "github-app.md" },
     { "Sign in with Keycloak" = "sign-in.md" },
     { "Sinks" = "sinks.md" },
+    { "Merge rows into a table" = "tables.md" },
+    { "Read open contributions" = "curation.md" },
     { "Drafts in storage" = "drafts.md" },
     { "Adopt the draft pattern" = "adopt.md" },
     { "Ingest" = "ingest.md" },
@@ -25,6 +27,7 @@ nav = [
   { "Background" = [
     { "Contribution pipelines in five projects" = "research/contribution-pipelines.md" },
     { "Sign-in study" = "research/sign-in-keycloak.md" },
+    { "resslab-hub gap study" = "research/resslab-hub-gap.md" },
   ] },
 ]
 

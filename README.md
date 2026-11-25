@@ -17,7 +17,7 @@ The library is a git dependency, pinned by tag:
 dependencies = ["enacit4r-contrib[github]"]
 
 [tool.uv.sources]
-enacit4r-contrib = { git = "https://github.com/EPFL-ENAC/enacit4r-contrib", tag = "0.5.0" }
+enacit4r-contrib = { git = "https://github.com/EPFL-ENAC/enacit4r-contrib", tag = "0.6.0" }
 ```
 
 ## Use it in a FastAPI backend
@@ -48,6 +48,8 @@ endpoints from the browser, and test your integration.
 After a merge, the `ingest` GitHub action folds the submission into your data. See [Ingest](https://epfl-enac.github.io/enacit4r-contrib/ingest/).
 
 To take accepted data out of the dataset, the `withdraw` GitHub action does the git steps. See [Withdraw data](https://epfl-enac.github.io/enacit4r-contrib/withdraw/).
+
+To merge the rows of a contribution into your main CSV inside the pull request, see [Merge rows into a table](https://epfl-enac.github.io/enacit4r-contrib/tables/). To build a curation page from the open pull requests, see [Read open contributions](https://epfl-enac.github.io/enacit4r-contrib/curation/).
 
 To keep contributions as drafts for an admin page instead of pull requests, see [Drafts in storage](https://epfl-enac.github.io/enacit4r-contrib/drafts/).
 

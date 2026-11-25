@@ -119,3 +119,34 @@ def test_pr_body_breaks_mentions_but_not_emails():
     assert "odd value" in body and "row 3" in body and "column x" in body
     assert "blocking" not in body
     assert body.splitlines()[-1] == "Checked by enacit4r-contrib"
+
+
+async def test_table_merge_commits_at_own_paths():
+    from enacit4r_contrib.tables import TableMerge
+
+    repo = FakeRepo(files={"data/a.csv": b"id,src\n1,x\n"})
+    bundle = {"data/a.csv": b"id\n2\n", "readme.md": b"hi"}
+    t = TableMerge("data/a.csv", fixed={"src": "web"})
+    await sink(repo, table=t).submit(bundle, ADA, EMPTY)
+    assert repo.commits[0]["files"] == {
+        "data/a.csv": b"id,src\n1,x\n2,web\n",
+        "readme.md": b"hi",
+    }
+
+
+async def test_table_merge_duplicate_makes_no_branch():
+    from enacit4r_contrib.tables import DuplicateIds, TableMerge
+
+    repo = FakeRepo(files={"data/a.csv": b"id\n1\n"})
+    with pytest.raises(DuplicateIds) as e:
+        await sink(repo, table=TableMerge("data/a.csv")).submit(BUNDLE, ADA, EMPTY)
+    assert e.value.ids == ["1"]
+    assert repo.branches == {}
+
+
+async def test_table_merge_needs_the_file_in_the_bundle():
+    from enacit4r_contrib.tables import TableError, TableMerge
+
+    repo = FakeRepo(files={"data/b.csv": b"id\n1\n"})
+    with pytest.raises(TableError, match="data/b.csv"):
+        await sink(repo, table=TableMerge("data/b.csv")).submit(BUNDLE, ADA, EMPTY)

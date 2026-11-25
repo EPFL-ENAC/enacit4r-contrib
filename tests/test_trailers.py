@@ -3,8 +3,11 @@ from enacit4r_contrib.trailers import (
     INSTITUTION,
     ORCID,
     SUBMITTED_BY,
+    address,
     build_commit_message,
+    format_trailers,
     parse_trailers,
+    split_address,
 )
 
 ADA = Contributor(name="Ada Lovelace", email="ada@example.org", institution="EPFL")
@@ -53,3 +56,48 @@ def test_prose_last_paragraph_gives_nothing():
 
 def test_repeated_keys_are_kept_in_order():
     assert parse_trailers("T\n\nA: 1\nB: 2\nA: 3") == {"A": ["1", "3"], "B": ["2"]}
+
+
+def test_format_trailers_drops_empty_values_and_folds_whitespace():
+    assert format_trailers(" A\n title ", [("K", " a\n  b "), ("E", " \n")]) == (
+        "A title\n\nK: a b"
+    )
+    assert format_trailers("T", [("E", "")]) == "T"
+    assert format_trailers("T", []) == "T"
+
+
+def test_address_round_trip():
+    value = address("Ada <x> Lovelace", " ada@example.edu ")
+    assert value == "Ada x Lovelace <ada@example.edu>"
+    assert split_address(value) == ("Ada x Lovelace", "ada@example.edu")
+    assert split_address(" plain name ") == ("plain name", "")
+
+
+def test_build_commit_message_is_unchanged_with_orcid():
+    c = ADA.model_copy(update={"orcid": "0000-0002-1825-0097"})
+    assert build_commit_message("Data contribution", c) == (
+        "Data contribution\n\n"
+        "Submitted-by: Ada Lovelace <ada@example.org>\n"
+        "Institution: EPFL\n"
+        "ORCID: 0000-0002-1825-0097"
+    )
+
+
+def test_build_commit_message_appends_extra_trailers():
+    message = build_commit_message(
+        "T", ADA, extra=[("Dataset", "walls"), ("Empty", " ")]
+    )
+    assert message == (
+        "T\n\n"
+        "Submitted-by: Ada Lovelace <ada@example.org>\n"
+        "Institution: EPFL\n"
+        "Dataset: walls"
+    )
+
+
+def test_parse_trailers_accepts_no_space_or_a_tab_after_the_colon():
+    assert parse_trailers("T\n\nA:1\nB:\t2 \nC:   3") == {
+        "A": ["1"],
+        "B": ["2"],
+        "C": ["3"],
+    }
