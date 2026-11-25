@@ -216,6 +216,15 @@ async def test_delete_branch_swallows_github_error(repo, caplog):
     assert "could not delete branch b" in caplog.text
 
 
+async def test_delete_branch_swallows_any_error(repo, caplog):
+    async def refuse(*args, **kwargs):
+        raise RuntimeError("Resource not accessible by integration")
+
+    repo._gh.rest.git.async_delete_ref = refuse
+    await repo.delete_branch("contrib/b")
+    assert "could not delete branch contrib/b" in caplog.text
+
+
 def test_constructor_picks_auth_strategy():
     assert isinstance(GitHubRepo("o/r", token="t")._gh.auth, TokenAuthStrategy)
     app = GitHubRepo(

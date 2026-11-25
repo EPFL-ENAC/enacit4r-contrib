@@ -6,7 +6,7 @@ import logging
 from collections.abc import Sequence
 
 from githubkit import AppInstallationAuthStrategy, GitHub, TokenAuthStrategy
-from githubkit.exception import GitHubException, RequestFailed
+from githubkit.exception import RequestFailed
 
 from enacit4r_contrib.repo import (
     ROLES,
@@ -394,10 +394,11 @@ class GitHubRepo:
         return data["permission"]
 
     async def delete_branch(self, branch: str) -> None:
-        # Runs during cleanup: raising here would hide the error that caused it.
+        # Runs during cleanup: raising here would hide the error that caused it,
+        # so any error is logged, not only the ones githubkit raises.
         try:
             await self._gh.rest.git.async_delete_ref(
                 self.owner, self.name, f"heads/{branch}"
             )
-        except GitHubException:
+        except Exception:
             log.exception("could not delete branch %s", branch)
